@@ -16,8 +16,8 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const UTC_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
 const FORBIDDEN_IN_TEXT = /[\p{Cc}\p{Co}\p{Cn}\u2028\u2029\u202A-\u202E\u2066-\u2069\u{E0000}-\u{E007F}]/u;
 const BLANK_LOOKING = /[\u115F\u1160\u3164\uFFA0\u2800\uFFFC\u{1D159}]/gu;
-/** A subdivision flag (🏴 + tag letters of an ISO 3166-2 code + cancel tag), the one use of tag characters let into text. */
-const TAG_FLAG = /\u{1F3F4}[\u{E0061}-\u{E007A}]{2}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{1,4}\u{E007F}/gu;
+/** The subdivision flags Unicode recommends (England, Scotland, Wales): the one use of tag characters let into text. */
+const TAG_FLAG = /\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}/gu;
 const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
 const EMOJI = /\p{Extended_Pictographic}|^\p{Regional_Indicator}{2}$|^[0-9#*]\uFE0F?\u20E3$/u;
 
@@ -71,7 +71,7 @@ function line(max: number) {
     .trim()
     .min(1)
     .max(max)
-    .refine((v) => !FORBIDDEN_IN_TEXT.test(v.replace(TAG_FLAG, "")), "must be one line without control, private-use, unassigned, direction or tag characters")
+    .refine((v) => !FORBIDDEN_IN_TEXT.test(v.replace(TAG_FLAG, "")), "must be one line without control, private-use, unassigned, direction or tag characters outside the flags of England, Scotland and Wales")
     .refine((v) => VISIBLE.test(v.replace(BLANK_LOOKING, "")), "must contain a visible character")
     .refine((v) => v.isWellFormed(), "must be well-formed Unicode");
 }
@@ -112,7 +112,7 @@ export const PublicKey = z
 });
 
 const LENGTH_NOTE =
-  "One line without control, private-use, unassigned, direction-override or tag characters, with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.";
+  "One line without control, private-use, unassigned, direction-override or tag characters (tag characters are allowed only inside the flags of England, Scotland and Wales), with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.";
 export const DisplayName = line(32).openapi("DisplayName", { description: LENGTH_NOTE, example: "みどり" });
 export const CardTitle = line(40).openapi("CardTitle", { description: LENGTH_NOTE, example: "冬休みにやること" });
 export const ItemTitle = line(40).openapi("ItemTitle", { description: LENGTH_NOTE, example: "初日の出を見る" });

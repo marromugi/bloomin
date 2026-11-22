@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,7 @@ const edits: [string, (sql: string) => string][] = [
   ["a UNIQUE index", replaceOnce("CREATE UNIQUE INDEX `items_cell`", "CREATE INDEX `items_cell`")],
   ["an index column", replaceOnce("ON `photos` (`bingo_id`)", "ON `photos` (`card_id`)")],
   ["a foreign key target column", replaceOnce("FOREIGN KEY (`taken_by`) REFERENCES `participants`(`id`)", "FOREIGN KEY (`taken_by`) REFERENCES `participants`(`public_key`)")],
+  ["a comment with an apostrophe and a changed column", replaceOnce("`title` text NOT NULL,\n\t`size`", "`title` text, -- don't\n\t`size`")],
   ["a trigger", (sql) => `${sql}\n--> statement-breakpoint\nCREATE TRIGGER t AFTER INSERT ON notes BEGIN SELECT 1; END;`],
   ["a view", (sql) => `${sql}\n--> statement-breakpoint\nCREATE VIEW v AS SELECT id FROM cards;`],
   ["user_version", (sql) => `${sql}\n--> statement-breakpoint\nPRAGMA user_version = 7;`],
@@ -60,3 +61,30 @@ for (const [name, edit] of edits) {
     assert.equal(checkWith(edit), 1);
   });
 }
+
+await test("passes a correct follow-up migration that adds a foreign-key column", () => {
+  const work = mkdtempSync(join(root, ".check-test-"));
+  try {
+    const migrations = join(work, "migrations");
+    cpSync(join(root, "migrations"), migrations, { recursive: true });
+    const schema = readFileSync(join(root, "src/db/schema.ts"), "utf8");
+    const anchor = '    comment: text("comment").notNull(),\n    sentAt: integer("sent_at").notNull(),';
+    assert.ok(schema.includes(anchor), "the notes table changed; update this test");
+    const changed = join(work, "schema.ts");
+    writeFileSync(changed, schema.replace(anchor, `${anchor}\n    replyTo: text("reply_to").references(() => participants.id),`));
+    const generate = spawnSync(
+      "pnpm",
+      ["exec", "drizzle-kit", "generate", "--dialect", "sqlite", "--schema", relative(root, changed), "--out", relative(root, migrations), "--name", "reply_to"],
+      { cwd: root, stdio: "ignore" },
+    );
+    assert.equal(generate.status, 0);
+    assert.match(readFileSync(join(migrations, "0001_reply_to.sql"), "utf8"), /ALTER TABLE `notes` ADD `reply_to` text REFERENCES/);
+    const check = spawnSync("pnpm", ["exec", "tsx", "scripts/check-migrations.ts", migrations, relative(root, changed)], {
+      cwd: root,
+      stdio: "ignore",
+    });
+    assert.equal(check.status, 0);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});

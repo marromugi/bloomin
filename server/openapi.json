@@ -66,7 +66,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 32,
-        "description": "One line without control, private-use, unassigned, direction-override or tag characters, with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
+        "description": "One line without control, private-use, unassigned, direction-override or tag characters (tag characters are allowed only inside the flags of England, Scotland and Wales), with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
         "example": "みどり"
       },
       "ErrorBody": {
@@ -207,7 +207,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 40,
-        "description": "One line without control, private-use, unassigned, direction-override or tag characters, with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
+        "description": "One line without control, private-use, unassigned, direction-override or tag characters (tag characters are allowed only inside the flags of England, Scotland and Wales), with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
         "example": "冬休みにやること"
       },
       "Size": {
@@ -379,7 +379,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 40,
-        "description": "One line without control, private-use, unassigned, direction-override or tag characters, with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
+        "description": "One line without control, private-use, unassigned, direction-override or tag characters (tag characters are allowed only inside the flags of England, Scotland and Wales), with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
         "example": "初日の出を見る"
       },
       "Emoji": {
@@ -429,7 +429,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 140,
-        "description": "The one-line note of what was done. One line without control, private-use, unassigned, direction-override or tag characters, with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
+        "description": "The one-line note of what was done. One line without control, private-use, unassigned, direction-override or tag characters (tag characters are allowed only inside the flags of England, Scotland and Wales), with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.",
         "example": "海で見た！"
       },
       "Bingo": {
