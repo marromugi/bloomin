@@ -14,7 +14,7 @@ import {
 
 type AppEnv = { Bindings: Bindings };
 
-function errorResponse(status: 400 | 501, code: z.infer<typeof ErrorBody>["error"]["code"], message: string): Response {
+function errorResponse(status: 400 | 404 | 501, code: z.infer<typeof ErrorBody>["error"]["code"], message: string): Response {
   const body: z.infer<typeof ErrorBody> = { error: { code, message } };
   return Response.json(body, { status });
 }
@@ -28,6 +28,8 @@ export function createApp(): OpenAPIHono<AppEnv> {
       return undefined;
     },
   });
+
+  app.notFound(() => errorResponse(404, "not_found", "No such route."));
 
   app.onError((error) => {
     if (error instanceof HTTPException && (error.status === 400 || error.status === 415)) {
@@ -102,7 +104,7 @@ Items are never stamped by picking them from the card. The app sends a one-line 
 
 ## Errors
 
-Every error body is \`ErrorBody\`. A body that is not JSON where JSON is expected, or JSON that does not match the schema, gets 400 \`invalid_request\`.
+Every error body is \`ErrorBody\`, including 404 for a path no route has. A body that is not JSON where JSON is expected, or JSON that does not match the schema, gets 400 \`invalid_request\`.
 
 ## Joining
 

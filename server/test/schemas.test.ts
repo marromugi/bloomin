@@ -97,7 +97,7 @@ describe("Emoji", () => {
 });
 
 describe("one-line text", () => {
-  it.each(["a\nb", "a\rb", "a b", "a b"])("refuses a line break in %j", (v) => {
+  it.each(["a\nb", "a\rb", "a\u2028b", "a\u2029b", "a\u0085b", "a\u000Bb", "a\u000Cb", "a\u0000b", "\ud800", "\u200B", "\u200B\u200D"])("refuses %j", (v) => {
     expect(Comment.safeParse(v).success).toBe(false);
     expect(CardTitle.safeParse(v).success).toBe(false);
   });

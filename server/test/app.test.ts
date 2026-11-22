@@ -11,6 +11,15 @@ describe("every route is a stub until it is built", () => {
     expect(res.status).not.toBe(404);
   });
 
+  it.each(["/v1/nothing", "/v1/cards/0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817/items/0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817/stamp"])(
+    "answers an unknown path %s with 404 not_found",
+    async (path) => {
+      const res = await app.request(path, { method: "PUT" });
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: { code: "not_found", message: "No such route." } });
+    },
+  );
+
   it("answers a valid request with 501 not_implemented", async () => {
     const res = await app.request("/v1/participants/me");
     expect(res.status).toBe(501);
