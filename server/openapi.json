@@ -385,7 +385,7 @@
       "Emoji": {
         "type": "string",
         "maxLength": 32,
-        "description": "One emoji: a single extended grapheme cluster holding an emoji.",
+        "description": "One emoji: a single extended grapheme cluster holding an emoji. Tag characters are allowed only in the flags of England, Scotland and Wales.",
         "example": "🌅"
       },
       "Stamp": {

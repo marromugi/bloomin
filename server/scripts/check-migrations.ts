@@ -1,17 +1,18 @@
 // Fails when applying the committed migrations gives a different database from the one the Drizzle schema generates from scratch:
 // different table definitions (columns, collations, constraints, options), indexes, foreign keys, rows, triggers, views,
 // or user_version.
-// Usage: tsx scripts/check-migrations.ts [migrations directory, default ./migrations] [schema file, default ./src/db/schema.ts]
+// Usage: tsx scripts/check-migrations.ts [migrations directory] [schema file], both relative to the working directory;
+// by default server/migrations and server/src/db/schema.ts.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url).href);
-const committedDir = process.argv[2] ?? join(root, "migrations");
-const schemaFile = process.argv[3] ?? "./src/db/schema.ts";
+const committedDir = resolve(process.argv[2] ?? join(root, "migrations"));
+const schemaFile = relative(root, resolve(process.argv[3] ?? join(root, "src/db/schema.ts")));
 
 interface Built {
   tables: Record<string, unknown>;
@@ -21,6 +22,10 @@ interface Built {
 
 const all = (db: DatabaseSync, sql: string) => db.prepare(sql).all();
 const inOrder = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON.stringify(b));
+
+/** An inline foreign-key clause on a column, exactly, so whatever else the column says is still compared. */
+const INLINE_REFERENCE =
+  / REFERENCES [`"]?\w+[`"]? ?\([^)]*\)( ON (DELETE|UPDATE) (SET NULL|SET DEFAULT|CASCADE|RESTRICT|NO ACTION))*( MATCH \w+)?( (NOT )?DEFERRABLE( INITIALLY (DEFERRED|IMMEDIATE))?)?/gi;
 
 /** The SQL with its line and block comments removed, leaving quoted text alone. */
 function withoutComments(sql: string): string {
@@ -80,10 +85,23 @@ function tablePieces(sql: string): { definitions: string[]; options: string; def
   items.push(text.slice(start, i).trim());
   const definitions = items
     .filter((item) => !/^(CONSTRAINT \S+ )?FOREIGN KEY\b/i.test(item))
-    .map((item) => item.replace(/ REFERENCES .*$/i, ""))
+    .map((item) => item.replace(INLINE_REFERENCE, ""))
     .sort();
   const deferrable = (text.match(/(NOT )?DEFERRABLE( INITIALLY (DEFERRED|IMMEDIATE))?/gi) ?? []).sort();
   return { definitions, options: text.slice(i + 1).trim(), deferrable };
+}
+
+/** Each foreign key as a whole (its columns in order), so one composite key differs from single-column keys. */
+function foreignKeys(db: DatabaseSync, quoted: string) {
+  const keys = new Map<string, { table: unknown; from: unknown[]; to: unknown[]; onUpdate: unknown; onDelete: unknown; match: unknown }>();
+  for (const row of all(db, `PRAGMA foreign_key_list(${quoted})`)) {
+    const id = String(row.id);
+    const key = keys.get(id) ?? { table: row.table, from: [], to: [], onUpdate: row.on_update, onDelete: row.on_delete, match: row.match };
+    key.from[Number(row.seq)] = row.from;
+    key.to[Number(row.seq)] = row.to;
+    keys.set(id, key);
+  }
+  return [...keys.values()].sort(inOrder);
 }
 
 /** Structure as SQLite reports it, so the same table made by CREATE or by CREATE then ALTER compares equal. */
@@ -97,9 +115,7 @@ function describeTable(db: DatabaseSync, name: string, sql: string) {
     indexes: all(db, `PRAGMA index_list(${quoted})`)
       .map(({ seq, ...index }) => ({ ...index, columns: all(db, `PRAGMA index_xinfo("${String(index.name)}")`).map(({ seqno, ...c }) => c) }))
       .sort(inOrder),
-    foreignKeys: all(db, `PRAGMA foreign_key_list(${quoted})`)
-      .map(({ id, seq, ...key }) => key)
-      .sort(inOrder),
+    foreignKeys: foreignKeys(db, quoted),
     pieces,
     rows: all(db, `SELECT * FROM ${quoted} ORDER BY 1`),
   };

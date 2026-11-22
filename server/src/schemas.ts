@@ -19,6 +19,7 @@ const BLANK_LOOKING = /[\u115F\u1160\u3164\uFFA0\u2800\uFFFC\u{1D159}]/gu;
 /** The subdivision flags Unicode recommends (England, Scotland, Wales): the one use of tag characters let into text. */
 const TAG_FLAG = /\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}/gu;
 const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
+const TAG_CHARACTER = /[\u{E0000}-\u{E007F}]/u;
 const EMOJI = /\p{Extended_Pictographic}|^\p{Regional_Indicator}{2}$|^[0-9#*]\uFE0F?\u20E3$/u;
 
 /** The regex keeps out UTC offsets, which Intl accepts as time zones. */
@@ -57,7 +58,7 @@ function matchesDateTime(pattern: RegExp, value: string): boolean {
 
 function isOneEmoji(value: string): boolean {
   const graphemes = [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(value)];
-  return graphemes.length === 1 && EMOJI.test(value);
+  return graphemes.length === 1 && EMOJI.test(value) && !TAG_CHARACTER.test(value.replace(TAG_FLAG, ""));
 }
 
 function isUsablePublicKeyText(text: string): boolean {
@@ -121,7 +122,8 @@ export const Emoji = z
   .max(32)
   .refine(isOneEmoji, "must be one emoji")
   .openapi("Emoji", {
-    description: "One emoji: a single extended grapheme cluster holding an emoji.",
+    description:
+      "One emoji: a single extended grapheme cluster holding an emoji. Tag characters are allowed only in the flags of England, Scotland and Wales.",
     example: "🌅",
   });
 export const Comment = line(140).openapi("Comment", {

@@ -51,6 +51,14 @@ const edits: [string, (sql: string) => string][] = [
   ["an index column", replaceOnce("ON `photos` (`bingo_id`)", "ON `photos` (`card_id`)")],
   ["a foreign key target column", replaceOnce("FOREIGN KEY (`taken_by`) REFERENCES `participants`(`id`)", "FOREIGN KEY (`taken_by`) REFERENCES `participants`(`public_key`)")],
   ["a comment with an apostrophe and a changed column", replaceOnce("`title` text NOT NULL,\n\t`size`", "`title` text, -- don't\n\t`size`")],
+  ["a composite foreign key split in two", replaceOnce(
+    "FOREIGN KEY (`item_id`,`card_id`) REFERENCES `items`(`id`,`card_id`) ON UPDATE no action ON DELETE cascade,",
+    "FOREIGN KEY (`item_id`) REFERENCES `items`(`id`) ON UPDATE no action ON DELETE cascade,\n\tFOREIGN KEY (`card_id`) REFERENCES `items`(`card_id`) ON UPDATE no action ON DELETE cascade,",
+  )],
+  ["a CHECK and collation hidden after an inline foreign key", (sql) =>
+    replaceOnce(",\n\tFOREIGN KEY (`sent_by`) REFERENCES `participants`(`id`) ON UPDATE no action ON DELETE no action", "")(
+      replaceOnce("`sent_by` text NOT NULL,", "`sent_by` text NOT NULL REFERENCES participants(id) COLLATE NOCASE CHECK(`sent_by` <> `comment`),")(sql),
+    )],
   ["a trigger", (sql) => `${sql}\n--> statement-breakpoint\nCREATE TRIGGER t AFTER INSERT ON notes BEGIN SELECT 1; END;`],
   ["a view", (sql) => `${sql}\n--> statement-breakpoint\nCREATE VIEW v AS SELECT id FROM cards;`],
   ["user_version", (sql) => `${sql}\n--> statement-breakpoint\nPRAGMA user_version = 7;`],
