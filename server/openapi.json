@@ -3,7 +3,7 @@
   "info": {
     "title": "bloomin API",
     "version": "1.0.0",
-    "description": "API of bloomin: one bingo card shared by everyone who joins it.\n\n## Signing requests\n\nThere is no login. A device makes an Ed25519 key pair and a participant id (lowercase UUID), keeps the private key in the keychain, and registers the public key with `POST /v1/participants`. Every request, registration included, carries three headers:\n\n- `Bloomin-Participant-Id`: the participant id.\n- `Bloomin-Timestamp`: Unix time in whole seconds, decimal.\n- `Bloomin-Signature`: the Ed25519 signature of the signing string below, standard base64 with padding.\n\nThe signing string is these five lines joined by a single `\\n` (LF), with no line break at the end, encoded as UTF-8:\n\n```\nbloomin-v1\n<METHOD>\n<path and query>\n<timestamp>\n<body SHA-256>\n```\n\n- `METHOD`: the HTTP method exactly as sent; every method of this API is uppercase.\n- `path and query`: the request path exactly as sent, percent-encoding as on the wire, followed by `?` and the query when the URL has one. No scheme, host or fragment.\n- `timestamp`: the same text as the `Bloomin-Timestamp` header.\n- `body SHA-256`: SHA-256 of the raw body bytes, 64 lowercase hex digits. A request without a body hashes zero bytes (`e3b0c442…b855`).\n\nThe server refuses with 401 when the timestamp is more than 300 seconds from its clock, or when the signature does not verify with the participant's registered key (for registration, the key in the body). The same request sent again inside that window is accepted again. Worked examples are in `server/test-vectors/signature.json`.\n\n## Deadline\n\nA card stores its last day and the creator's IANA time zone. It expires at 00:00 of the following day in that zone. After that it is read-only, except that photos can still be added and people can still join to look at it.\n\n## Joining\n\nThe QR code holds the Universal Link `https://<host>/j/{joinCode}`. The app reads the code from the link and calls `POST /v1/joins`."
+    "description": "API of bloomin: one bingo card shared by everyone who joins it.\n\n## Signing requests\n\nThere is no login. A device makes an Ed25519 key pair and a participant id (lowercase UUID), keeps the private key in the keychain (synced with iCloud Keychain), and registers the public key with `POST /v1/participants`. Every request, registration included, carries three headers:\n\n- `Bloomin-Participant-Id`: the participant id.\n- `Bloomin-Timestamp`: Unix time in whole seconds, decimal.\n- `Bloomin-Signature`: the Ed25519 signature of the signing string below, standard base64 with padding.\n\nThe signing string is these five lines joined by a single `\\n` (LF), with no line break at the end, encoded as UTF-8:\n\n```\nbloomin-v1\n<METHOD>\n<path and query>\n<timestamp>\n<body SHA-256>\n```\n\n- `METHOD`: the HTTP method exactly as sent; every method of this API is uppercase.\n- `path and query`: the request path exactly as sent, percent-encoding as on the wire, followed by `?` and the query when the URL has one. No scheme, host or fragment.\n- `timestamp`: the same text as the `Bloomin-Timestamp` header.\n- `body SHA-256`: SHA-256 of the raw body bytes, 64 lowercase hex digits. A request without a body hashes zero bytes (`e3b0c442…b855`).\n\nThe signature is accepted only in its one canonical base64 encoding. The server refuses with 401 when the timestamp is more than 300 seconds from its clock, or when the signature does not verify with the participant's registered key (for registration, the key in the body, and the participant id header must equal the body `id`). The same request sent again inside that window is accepted again. Worked examples are in `server/test-vectors/signature.json`.\n\n## Deadline\n\nA card stores its last day and the creator's IANA time zone. It expires at 00:00 of the following day in that zone. After that it is read-only, except that photos can still be added and people can still join to look at it.\n\n## Stamping\n\nItems are never stamped by picking them from the card. The app sends a one-line note to `POST /v1/cards/{cardId}/stamps` and the server stamps the item the note fulfils.\n\n## Errors\n\nEvery error body is `ErrorBody`. A body that is not JSON where JSON is expected, or JSON that does not match the schema, gets 400 `invalid_request`.\n\n## Joining\n\nThe QR code holds the Universal Link `https://<host>/j/{joinCode}`. The app reads the code from the link and calls `POST /v1/joins`."
   },
   "security": [
     {
@@ -45,7 +45,7 @@
           },
           "createdAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           }
@@ -66,6 +66,8 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 32,
+        "pattern": "^[^\\r\\n\\u2028\\u2029]*$",
+        "description": "One line; length is counted in Unicode code points after trimming.",
         "example": "みどり"
       },
       "ErrorBody": {
@@ -99,6 +101,7 @@
           "not_found",
           "card_expired",
           "already_stamped",
+          "no_match",
           "participant_conflict",
           "payload_too_large",
           "not_implemented"
@@ -126,7 +129,7 @@
       "PublicKey": {
         "type": "string",
         "pattern": "^[A-Za-z0-9+/]{43}=$",
-        "description": "Ed25519 public key: the raw 32 bytes, standard base64 with padding.",
+        "description": "Ed25519 public key: the raw 32 bytes, standard base64 with padding, in its one canonical encoding. Keys of small order are refused.",
         "example": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
       },
       "UpdateParticipantBody": {
@@ -166,7 +169,7 @@
           },
           "expiresAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           },
@@ -179,7 +182,7 @@
           },
           "createdAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           }
@@ -206,6 +209,8 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 40,
+        "pattern": "^[^\\r\\n\\u2028\\u2029]*$",
+        "description": "One line; length is counted in Unicode code points after trimming.",
         "example": "冬休みにやること"
       },
       "Size": {
@@ -225,7 +230,7 @@
           },
           "timeZone": {
             "type": "string",
-            "description": "IANA time zone name of the creator.",
+            "description": "IANA time zone name of the creator. Letter case is not significant; responses carry the spelling the server's time zone data resolves it to (`asia/tokyo` comes back as `Asia/Tokyo`).",
             "example": "Asia/Tokyo"
           }
         },
@@ -261,7 +266,7 @@
           },
           "expiresAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           },
@@ -274,7 +279,7 @@
           },
           "createdAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           },
@@ -377,13 +382,14 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 40,
+        "pattern": "^[^\\r\\n\\u2028\\u2029]*$",
+        "description": "One line; length is counted in Unicode code points after trimming.",
         "example": "初日の出を見る"
       },
       "Emoji": {
         "type": "string",
-        "minLength": 1,
-        "maxLength": 16,
-        "description": "One emoji, as one extended grapheme cluster.",
+        "maxLength": 32,
+        "description": "One emoji: a single extended grapheme cluster holding an emoji.",
         "example": "🌅"
       },
       "Stamp": {
@@ -400,7 +406,7 @@
           },
           "stampedAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           }
@@ -411,13 +417,14 @@
           "comment",
           "stampedAt"
         ],
-        "description": "At most one per item. Editing the item keeps the stamp; any member can remove it."
+        "description": "At most one per item. Made from a one-line note, never by picking an item. Editing the item keeps the stamp; any member can remove it."
       },
       "Comment": {
         "type": "string",
         "minLength": 1,
         "maxLength": 140,
-        "description": "The one-line note of what was done.",
+        "pattern": "^[^\\r\\n\\u2028\\u2029]*$",
+        "description": "The one-line note of what was done. One line; length is counted in Unicode code points after trimming.",
         "example": "海で見た！"
       },
       "Bingo": {
@@ -428,7 +435,7 @@
           },
           "achievedAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           },
@@ -444,7 +451,7 @@
           "achievedAt",
           "items"
         ],
-        "description": "A completed line, kept as the items it held (FREE left out) and the time. It does not change when items, positions or the size change later, nor when a stamp is removed. The same set of items makes a bingo only once."
+        "description": "A completed line, kept as the items it held (FREE left out) and the time. It does not change when items, positions or the size change later."
       },
       "BingoId": {
         "type": "string",
@@ -486,13 +493,13 @@
           },
           "takenAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           },
           "uploadedAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           },
@@ -534,7 +541,7 @@
           },
           "joinedAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
             "description": "Instant in UTC, ISO 8601 with Z.",
             "example": "2026-11-22T09:30:00.000Z"
           }
@@ -590,17 +597,6 @@
           "title",
           "emoji"
         ]
-      },
-      "UpdateCardBody": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "$ref": "#/components/schemas/CardTitle"
-          },
-          "deadline": {
-            "$ref": "#/components/schemas/Deadline"
-          }
-        }
       },
       "ResizeCardBody": {
         "type": "object",
@@ -720,7 +716,7 @@
           "participants"
         ],
         "summary": "Register this device's participant",
-        "description": "No login. Signed like every other request, with the private key of the public key in the body; the server checks the signature with that key. Registering again with the same id and key returns the existing participant.",
+        "description": "No login. Signed like every other request, with two differences: the `Bloomin-Participant-Id` header must equal the `id` in the body, and the signature is checked with the public key in the body, so the participant need not exist yet. Registering again with the same id and key returns the existing participant.",
         "requestBody": {
           "required": true,
           "content": {
@@ -763,7 +759,7 @@
             }
           },
           "401": {
-            "description": "`unauthorized`: a signature header is missing, the participant is unknown, the timestamp is more than 300 seconds from the server's clock, or the signature does not verify.",
+            "description": "`unauthorized`: a signature header is missing, the participant id header differs from the body `id`, the timestamp is more than 300 seconds from the server's clock, or the signature does not verify with the key in the body.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1038,87 +1034,6 @@
             }
           }
         }
-      },
-      "patch": {
-        "operationId": "updateCard",
-        "tags": [
-          "cards"
-        ],
-        "summary": "Change the title or the deadline",
-        "description": "Any member.",
-        "parameters": [
-          {
-            "schema": {
-              "$ref": "#/components/schemas/CardId"
-            },
-            "required": true,
-            "description": "UUID in lowercase hyphenated form.",
-            "name": "cardId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCardBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Card"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`invalid_request`: the body, path or query does not match the schema.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthorized`: a signature header is missing, the participant is unknown, the timestamp is more than 300 seconds from the server's clock, or the signature does not verify.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`card_expired`: the card is past its deadline and is read-only.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`not_found`: the card does not exist or the caller is not a member of it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/v1/cards/{cardId}/size": {
@@ -1284,7 +1199,7 @@
             }
           },
           "404": {
-            "description": "`not_found`: the card does not exist or the caller is not a member of it.",
+            "description": "`not_found`: the card or the item does not exist, or the caller is not a member of the card.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1296,14 +1211,14 @@
         }
       }
     },
-    "/v1/cards/{cardId}/items/{itemId}/stamp": {
-      "put": {
-        "operationId": "stampItem",
+    "/v1/cards/{cardId}/stamps": {
+      "post": {
+        "operationId": "stamp",
         "tags": [
           "stamps"
         ],
-        "summary": "Stamp an item",
-        "description": "Records who stamped, the comment and the time, then records any bingo it completed. When two stamps arrive for one item, the first one to arrive wins.",
+        "summary": "Stamp the item a one-line note fulfils",
+        "description": "Items are never stamped by picking them. The server judges from the note which unstamped item it fulfils, stamps it with who sent the note, the note and the time, then records any bingo it completed. When two stamps arrive for one item, the first one to arrive wins.",
         "parameters": [
           {
             "schema": {
@@ -1312,15 +1227,6 @@
             "required": true,
             "description": "UUID in lowercase hyphenated form.",
             "name": "cardId",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "$ref": "#/components/schemas/ItemId"
-            },
-            "required": true,
-            "description": "UUID in lowercase hyphenated form.",
-            "name": "itemId",
             "in": "path"
           }
         ],
@@ -1386,7 +1292,17 @@
             }
           },
           "409": {
-            "description": "`already_stamped`: the item already has a stamp.",
+            "description": "`already_stamped`: the item the note fulfils was stamped by a request that arrived first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`no_match`: the note fulfils no unstamped item.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1396,14 +1312,16 @@
             }
           }
         }
-      },
+      }
+    },
+    "/v1/cards/{cardId}/items/{itemId}/stamp": {
       "delete": {
         "operationId": "unstampItem",
         "tags": [
           "stamps"
         ],
         "summary": "Remove a stamp",
-        "description": "Any member, whoever stamped it. Bingos already recorded stay.",
+        "description": "Any member, whoever stamped it.",
         "parameters": [
           {
             "schema": {
@@ -1478,7 +1396,7 @@
           "photos"
         ],
         "summary": "Add a photo to a bingo",
-        "description": "Allowed after the deadline. The body is the image bytes, at most 10485760 bytes; its SHA-256 is part of the signature like any body.",
+        "description": "Allowed after the deadline. The body is the image bytes, at most 10485760 bytes; its SHA-256 is part of the signature like any body. Another content type or an empty body gets 400 `invalid_request`.",
         "parameters": [
           {
             "schema": {
@@ -1501,7 +1419,7 @@
           {
             "schema": {
               "type": "string",
-              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+              "pattern": "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?Z$",
               "description": "When the photo was taken, in UTC with Z.",
               "example": "2026-11-22T09:30:00.000Z"
             },
@@ -1560,7 +1478,7 @@
             }
           },
           "404": {
-            "description": "`not_found`: the card does not exist or the caller is not a member of it.",
+            "description": "`not_found`: the card or the bingo does not exist, or the caller is not a member of the card.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1648,7 +1566,7 @@
             }
           },
           "404": {
-            "description": "`not_found`: the card does not exist or the caller is not a member of it.",
+            "description": "`not_found`: the card or the photo does not exist, or the caller is not a member of the card.",
             "content": {
               "application/json": {
                 "schema": {

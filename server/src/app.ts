@@ -1,4 +1,5 @@
 import { OpenAPIHono, type RouteConfig } from "@hono/zod-openapi";
+import { HTTPException } from "hono/http-exception";
 import type { Bindings } from "./env";
 import { routes } from "./routes";
 import type { ErrorBody } from "./schemas";
@@ -26,6 +27,13 @@ export function createApp(): OpenAPIHono<AppEnv> {
       }
       return undefined;
     },
+  });
+
+  app.onError((error) => {
+    if (error instanceof HTTPException && (error.status === 400 || error.status === 415)) {
+      return errorResponse(400, "invalid_request", error.message);
+    }
+    throw error;
   });
 
   app.openAPIRegistry.registerComponent("securitySchemes", "participantId", {
@@ -61,7 +69,7 @@ const API_DESCRIPTION = `API of bloomin: one bingo card shared by everyone who j
 
 ## Signing requests
 
-There is no login. A device makes an Ed25519 key pair and a participant id (lowercase UUID), keeps the private key in the keychain, and registers the public key with \`POST /v1/participants\`. Every request, registration included, carries three headers:
+There is no login. A device makes an Ed25519 key pair and a participant id (lowercase UUID), keeps the private key in the keychain (synced with iCloud Keychain), and registers the public key with \`POST /v1/participants\`. Every request, registration included, carries three headers:
 
 - \`${HEADER_PARTICIPANT_ID}\`: the participant id.
 - \`${HEADER_TIMESTAMP}\`: Unix time in whole seconds, decimal.
@@ -82,11 +90,19 @@ ${SIGNATURE_VERSION}
 - \`timestamp\`: the same text as the \`${HEADER_TIMESTAMP}\` header.
 - \`body SHA-256\`: SHA-256 of the raw body bytes, 64 lowercase hex digits. A request without a body hashes zero bytes (\`e3b0c442…b855\`).
 
-The server refuses with 401 when the timestamp is more than ${CLOCK_SKEW_SECONDS} seconds from its clock, or when the signature does not verify with the participant's registered key (for registration, the key in the body). The same request sent again inside that window is accepted again. Worked examples are in \`server/test-vectors/signature.json\`.
+The signature is accepted only in its one canonical base64 encoding. The server refuses with 401 when the timestamp is more than ${CLOCK_SKEW_SECONDS} seconds from its clock, or when the signature does not verify with the participant's registered key (for registration, the key in the body, and the participant id header must equal the body \`id\`). The same request sent again inside that window is accepted again. Worked examples are in \`server/test-vectors/signature.json\`.
 
 ## Deadline
 
 A card stores its last day and the creator's IANA time zone. It expires at 00:00 of the following day in that zone. After that it is read-only, except that photos can still be added and people can still join to look at it.
+
+## Stamping
+
+Items are never stamped by picking them from the card. The app sends a one-line note to \`POST /v1/cards/{cardId}/stamps\` and the server stamps the item the note fulfils.
+
+## Errors
+
+Every error body is \`ErrorBody\`. A body that is not JSON where JSON is expected, or JSON that does not match the schema, gets 400 \`invalid_request\`.
 
 ## Joining
 

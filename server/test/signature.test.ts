@@ -25,7 +25,7 @@ function replaceAt(value: string, index: number): string {
   return value.slice(0, index) + swapped + value.slice(index + 1);
 }
 
-const publicKey = await importPublicKey(vectors.publicKeyBase64);
+const publicKey = await importPublicKey(fromBase64(vectors.publicKeyBase64));
 
 describe.each(vectors.cases)("$name", (v) => {
   const parts = partsOf(v);
@@ -70,11 +70,18 @@ describe.each(vectors.cases)("$name", (v) => {
     expect(await verifySignature({ ...parts, body }, v.signature, publicKey, now)).toEqual({ ok: false, reason: "bad_signature" });
   });
 
-  it.each([0, 42, 85])("refuses the signature changed at character %i", async (index) => {
-    expect(await verifySignature(parts, replaceAt(v.signature, index), publicKey, now)).toEqual({
-      ok: false,
-      reason: "bad_signature",
-    });
+  it("refuses the signature with any one character changed", async () => {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    const accepted: string[] = [];
+    for (let index = 0; index < v.signature.length; index++) {
+      for (const c of alphabet) {
+        if (c === v.signature[index]) continue;
+        const changed = v.signature.slice(0, index) + c + v.signature.slice(index + 1);
+        const result = await verifySignature(parts, changed, publicKey, now);
+        if (result.ok) accepted.push(`${index}:${c}`);
+      }
+    }
+    expect(accepted).toEqual([]);
   });
 
   it("refuses the signature checked with another participant's key", async () => {

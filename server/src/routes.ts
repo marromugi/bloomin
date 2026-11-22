@@ -19,7 +19,6 @@ import {
   ResizeCardBody,
   StampBody,
   StampResult,
-  UpdateCardBody,
   UpdateItemBody,
   UpdateParticipantBody,
 } from "./schemas";
@@ -53,6 +52,8 @@ const writesCard = {
   403: error("`card_expired`: the card is past its deadline and is read-only."),
 };
 
+const itemNotFound = error("`not_found`: the card or the item does not exist, or the caller is not a member of the card.");
+
 const cardParams = z.object({ cardId: CardId.openapi({ param: { name: "cardId", in: "path" } }) });
 const itemParams = cardParams.extend({ itemId: ItemId.openapi({ param: { name: "itemId", in: "path" } }) });
 const bingoParams = cardParams.extend({ bingoId: BingoId.openapi({ param: { name: "bingoId", in: "path" } }) });
@@ -65,12 +66,15 @@ export const registerParticipant = createRoute({
   path: "/v1/participants",
   summary: "Register this device's participant",
   description:
-    "No login. Signed like every other request, with the private key of the public key in the body; the server checks the signature with that key. Registering again with the same id and key returns the existing participant.",
+    "No login. Signed like every other request, with two differences: the `Bloomin-Participant-Id` header must equal the `id` in the body, and the signature is checked with the public key in the body, so the participant need not exist yet. Registering again with the same id and key returns the existing participant.",
   request: { body: body(RegisterParticipantBody) },
   responses: {
     201: json(Participant, "Registered."),
     200: json(Participant, "Already registered with the same key."),
     ...common,
+    401: error(
+      "`unauthorized`: a signature header is missing, the participant id header differs from the body `id`, the timestamp is more than 300 seconds from the server's clock, or the signature does not verify with the key in the body.",
+    ),
     409: error("`participant_conflict`: the id is registered with a different key."),
   },
 });
@@ -128,17 +132,6 @@ export const getCard = createRoute({
   responses: { 200: json(Card, "The card."), ...onCard },
 });
 
-export const updateCard = createRoute({
-  operationId: "updateCard",
-  tags: ["cards"],
-  method: "patch",
-  path: "/v1/cards/{cardId}",
-  summary: "Change the title or the deadline",
-  description: "Any member.",
-  request: { params: cardParams, body: body(UpdateCardBody) },
-  responses: { 200: json(Card, "Updated."), ...writesCard },
-});
-
 export const resizeCard = createRoute({
   operationId: "resizeCard",
   tags: ["cards"],
@@ -163,22 +156,23 @@ export const updateItem = createRoute({
   summary: "Edit an item",
   description: "Any member, also after the card has started. A stamp on the item stays.",
   request: { params: itemParams, body: body(UpdateItemBody) },
-  responses: { 200: json(Item, "Updated."), ...writesCard },
+  responses: { 200: json(Item, "Updated."), ...writesCard, 404: itemNotFound },
 });
 
-export const stampItem = createRoute({
-  operationId: "stampItem",
+export const stamp = createRoute({
+  operationId: "stamp",
   tags: ["stamps"],
-  method: "put",
-  path: "/v1/cards/{cardId}/items/{itemId}/stamp",
-  summary: "Stamp an item",
+  method: "post",
+  path: "/v1/cards/{cardId}/stamps",
+  summary: "Stamp the item a one-line note fulfils",
   description:
-    "Records who stamped, the comment and the time, then records any bingo it completed. When two stamps arrive for one item, the first one to arrive wins.",
-  request: { params: itemParams, body: body(StampBody) },
+    "Items are never stamped by picking them. The server judges from the note which unstamped item it fulfils, stamps it with who sent the note, the note and the time, then records any bingo it completed. When two stamps arrive for one item, the first one to arrive wins.",
+  request: { params: cardParams, body: body(StampBody) },
   responses: {
     201: json(StampResult, "Stamped."),
     ...writesCard,
-    409: error("`already_stamped`: the item already has a stamp."),
+    409: error("`already_stamped`: the item the note fulfils was stamped by a request that arrived first."),
+    422: error("`no_match`: the note fulfils no unstamped item."),
   },
 });
 
@@ -188,7 +182,7 @@ export const unstampItem = createRoute({
   method: "delete",
   path: "/v1/cards/{cardId}/items/{itemId}/stamp",
   summary: "Remove a stamp",
-  description: "Any member, whoever stamped it. Bingos already recorded stay.",
+  description: "Any member, whoever stamped it.",
   request: { params: itemParams },
   responses: {
     204: { description: "Removed." },
@@ -203,7 +197,7 @@ export const uploadPhoto = createRoute({
   method: "post",
   path: "/v1/cards/{cardId}/bingos/{bingoId}/photos",
   summary: "Add a photo to a bingo",
-  description: `Allowed after the deadline. The body is the image bytes, at most ${PHOTO_MAX_BYTES} bytes; its SHA-256 is part of the signature like any body.`,
+  description: `Allowed after the deadline. The body is the image bytes, at most ${PHOTO_MAX_BYTES} bytes; its SHA-256 is part of the signature like any body. Another content type or an empty body gets 400 \`invalid_request\`.`,
   request: {
     params: bingoParams,
     query: PhotoUploadQuery,
@@ -218,6 +212,7 @@ export const uploadPhoto = createRoute({
   responses: {
     201: json(Photo, "Stored."),
     ...onCard,
+    404: error("`not_found`: the card or the bingo does not exist, or the caller is not a member of the card."),
     413: error("`payload_too_large`: the image is larger than the limit."),
   },
 });
@@ -238,6 +233,7 @@ export const getPhoto = createRoute({
       },
     },
     ...onCard,
+    404: error("`not_found`: the card or the photo does not exist, or the caller is not a member of the card."),
   },
 });
 
@@ -275,10 +271,9 @@ export const routes = [
   listCards,
   createCard,
   getCard,
-  updateCard,
   resizeCard,
   updateItem,
-  stampItem,
+  stamp,
   unstampItem,
   uploadPhoto,
   getPhoto,

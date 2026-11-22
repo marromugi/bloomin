@@ -37,6 +37,31 @@ describe("request validation", () => {
     items: items(positions),
   });
 
+  const invalidRequest = async (res: Response) => {
+    expect(res.status).toBe(400);
+    const body: { error: { code: string } } = await res.json();
+    expect(body.error.code).toBe("invalid_request");
+  };
+
+  it.each([
+    ["malformed JSON", { "Content-Type": "application/json" }, "{"],
+    ["an empty JSON body", { "Content-Type": "application/json" }, ""],
+    ["a text body", { "Content-Type": "text/plain" }, "{}"],
+    ["no content type", {}, "{}"],
+  ])("answers %s with 400 invalid_request", async (_, headers, body) => {
+    await invalidRequest(await app.request("/v1/cards/0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817/stamps", { method: "POST", headers, body }));
+  });
+
+  it("refuses to register a key of small order", async () => {
+    await invalidRequest(
+      await post("/v1/participants", {
+        id: "3f2a1c9e-8b7d-4e6f-9a0b-1c2d3e4f5a6b",
+        publicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        displayName: "みどり",
+      }),
+    );
+  });
+
   it.each([
     ["size 3 without the FREE cell", card(3, [0, 1, 2, 3, 5, 6, 7, 8]), 501],
     ["size 4 with every cell", card(4, [...Array(16).keys()]), 501],

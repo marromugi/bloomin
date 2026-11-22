@@ -45,8 +45,26 @@ it("refuses a size outside 3 to 5", async () => {
   ).rejects.toThrow(/CHECK constraint failed/);
 });
 
-it("records the same set of items as a bingo only once per card", async () => {
-  const bingo = env.DB.prepare("INSERT INTO bingos VALUES (?, ?, 'a,b,c', 0)");
-  await bingo.bind("b1", card).run();
-  await expect(bingo.bind("b2", card).run()).rejects.toThrow(/UNIQUE constraint failed/);
+it.each([
+  ["a fractional size", "INSERT INTO cards VALUES ('c35', 'x', 3.5, '2026-12-31', 'UTC', 'BBBBBBBBBB', ?, 0)"],
+  ["a fractional position", "INSERT INTO items VALUES ('i15', '0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 1.5, 't', '🌅')"],
+])("refuses %s", async (_, sql) => {
+  const statement = env.DB.prepare(sql);
+  await expect((sql.includes("?") ? statement.bind(participant) : statement).run()).rejects.toThrow(/CHECK constraint failed/);
+});
+
+it("refuses a stamp or a photo whose card differs from its item's or bingo's card", async () => {
+  const other = "11111111-1111-4111-8111-111111111111";
+  const otherItem = "22222222-2222-4222-8222-222222222222";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'other', 4, '2026-12-31', 'UTC', 'CCCCCCCCCC', ?, 0)").bind(other, participant),
+    env.DB.prepare("INSERT INTO items VALUES (?, ?, 0, 'item', '🌅')").bind(otherItem, other),
+    env.DB.prepare("INSERT INTO bingos VALUES ('b1', ?, 0)").bind(card),
+  ]);
+  await expect(
+    env.DB.prepare("INSERT INTO stamps VALUES (?, ?, ?, 'x', 0)").bind(otherItem, card, participant).run(),
+  ).rejects.toThrow(/FOREIGN KEY constraint failed/);
+  await expect(
+    env.DB.prepare("INSERT INTO photos VALUES ('p1', ?, 'b1', ?, 0, 0, 'image/jpeg', 'k1')").bind(other, participant).run(),
+  ).rejects.toThrow(/FOREIGN KEY constraint failed/);
 });

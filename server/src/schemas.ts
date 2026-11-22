@@ -1,4 +1,6 @@
 import { z } from "@hono/zod-openapi";
+import { decodeCanonicalBase64 } from "./base64";
+import { isUsablePublicKey } from "./ed25519";
 
 export function freePosition(size: number): number | null {
   return size % 2 === 1 ? (size * size - 1) / 2 : null;
@@ -9,11 +11,13 @@ export function itemCount(size: number): number {
 }
 
 const LOWERCASE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const ED25519_PUBLIC_KEY_BASE64 = /^[A-Za-z0-9+/]{43}=$/;
 const IANA_NAME = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const UTC_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
+const SINGLE_LINE = /^[^\r\n\u2028\u2029]*$/;
+const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
 
+/** The regex keeps out UTC offsets, which Intl accepts as time zones. */
 function isIanaTimeZone(name: string): boolean {
   if (!IANA_NAME.test(name)) return false;
   try {
@@ -25,13 +29,40 @@ function isIanaTimeZone(name: string): boolean {
   }
 }
 
-function isCalendarDate(value: string): boolean {
-  const match = ISO_DATE.exec(value);
+function isUtcDateTime(y: number, mo: number, d: number, h = 0, mi = 0, s = 0): boolean {
+  const date = new Date(0);
+  date.setUTCFullYear(y, mo - 1, d);
+  date.setUTCHours(h, mi, s);
+  return (
+    date.getUTCFullYear() === y &&
+    date.getUTCMonth() === mo - 1 &&
+    date.getUTCDate() === d &&
+    date.getUTCHours() === h &&
+    date.getUTCMinutes() === mi &&
+    date.getUTCSeconds() === s
+  );
+}
+
+function matchesDateTime(pattern: RegExp, value: string): boolean {
+  const match = pattern.exec(value);
   if (match === null) return false;
-  const [, y, m, d] = match.map(Number);
-  if (y === undefined || m === undefined || d === undefined) return false;
-  const date = new Date(Date.UTC(y, m - 1, d));
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+  const [y, mo, d, h, mi, s] = match.slice(1).map(Number);
+  if (y === undefined || mo === undefined || d === undefined) return false;
+  return isUtcDateTime(y, mo, d, h, mi, s);
+}
+
+function isOneEmoji(value: string): boolean {
+  const graphemes = [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(value)];
+  return graphemes.length === 1 && EMOJI.test(value);
+}
+
+function isUsablePublicKeyText(text: string): boolean {
+  const bytes = decodeCanonicalBase64(text, 32);
+  return bytes !== null && isUsablePublicKey(bytes);
+}
+
+function line(max: number) {
+  return z.string().trim().min(1).max(max).regex(SINGLE_LINE, "must be one line");
 }
 
 export const Uuid = z
@@ -45,6 +76,7 @@ export const Uuid = z
 export const Instant = z
   .string()
   .regex(UTC_INSTANT)
+  .refine((v) => matchesDateTime(UTC_INSTANT, v), "must be a real date and time")
   .openapi({ description: "Instant in UTC, ISO 8601 with Z.", example: "2026-11-22T09:30:00.000Z" });
 
 export const ParticipantId = Uuid.openapi("ParticipantId", {
@@ -55,20 +87,30 @@ export const ItemId = Uuid.openapi("ItemId");
 export const BingoId = Uuid.openapi("BingoId");
 export const PhotoId = Uuid.openapi("PhotoId");
 
-export const PublicKey = z.string().regex(ED25519_PUBLIC_KEY_BASE64).openapi("PublicKey", {
-  description: "Ed25519 public key: the raw 32 bytes, standard base64 with padding.",
+export const PublicKey = z
+  .string()
+  .regex(/^[A-Za-z0-9+/]{43}=$/)
+  .refine(isUsablePublicKeyText, "must be a canonical Ed25519 public key that is not of small order")
+  .openapi("PublicKey", {
+  description:
+    "Ed25519 public key: the raw 32 bytes, standard base64 with padding, in its one canonical encoding. Keys of small order are refused.",
   example: "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
 });
 
-export const DisplayName = z.string().trim().min(1).max(32).openapi("DisplayName", { example: "みどり" });
-export const CardTitle = z.string().trim().min(1).max(40).openapi("CardTitle", { example: "冬休みにやること" });
-export const ItemTitle = z.string().trim().min(1).max(40).openapi("ItemTitle", { example: "初日の出を見る" });
-export const Emoji = z.string().min(1).max(16).openapi("Emoji", {
-  description: "One emoji, as one extended grapheme cluster.",
-  example: "🌅",
-});
-export const Comment = z.string().trim().min(1).max(140).openapi("Comment", {
-  description: "The one-line note of what was done.",
+const LENGTH_NOTE = "One line; length is counted in Unicode code points after trimming.";
+export const DisplayName = line(32).openapi("DisplayName", { description: LENGTH_NOTE, example: "みどり" });
+export const CardTitle = line(40).openapi("CardTitle", { description: LENGTH_NOTE, example: "冬休みにやること" });
+export const ItemTitle = line(40).openapi("ItemTitle", { description: LENGTH_NOTE, example: "初日の出を見る" });
+export const Emoji = z
+  .string()
+  .max(32)
+  .refine(isOneEmoji, "must be one emoji")
+  .openapi("Emoji", {
+    description: "One emoji: a single extended grapheme cluster holding an emoji.",
+    example: "🌅",
+  });
+export const Comment = line(140).openapi("Comment", {
+  description: `The one-line note of what was done. ${LENGTH_NOTE}`,
   example: "海で見た！",
 });
 
@@ -100,12 +142,12 @@ export const Deadline = z
     date: z
       .string()
       .regex(ISO_DATE)
-      .refine(isCalendarDate, "must be a calendar date YYYY-MM-DD")
+      .refine((v) => matchesDateTime(ISO_DATE, v), "must be a calendar date YYYY-MM-DD")
       .openapi({ description: "Last day of the card, in the creator's time zone.", example: "2026-12-31" }),
     timeZone: z
       .string()
       .refine(isIanaTimeZone, "must be an IANA time zone name")
-      .openapi({ description: "IANA time zone name of the creator.", example: "Asia/Tokyo" }),
+      .openapi({ description: "IANA time zone name of the creator. Letter case is not significant; responses carry the spelling the server's time zone data resolves it to (`asia/tokyo` comes back as `Asia/Tokyo`).", example: "Asia/Tokyo" }),
   })
   .openapi("Deadline", {
     description:
@@ -145,7 +187,8 @@ export const Stamp = z
     stampedAt: Instant,
   })
   .openapi("Stamp", {
-    description: "At most one per item. Editing the item keeps the stamp; any member can remove it.",
+    description:
+      "At most one per item. Made from a one-line note, never by picking an item. Editing the item keeps the stamp; any member can remove it.",
   });
 
 export const BingoItem = z
@@ -164,7 +207,7 @@ export const Bingo = z
   })
   .openapi("Bingo", {
     description:
-      "A completed line, kept as the items it held (FREE left out) and the time. It does not change when items, positions or the size change later, nor when a stamp is removed. The same set of items makes a bingo only once.",
+      "A completed line, kept as the items it held (FREE left out) and the time. It does not change when items, positions or the size change later.",
   });
 
 export const PhotoContentType = z.enum(["image/jpeg", "image/heic"]).openapi("PhotoContentType");
@@ -218,6 +261,7 @@ export const ErrorCode = z
     "not_found",
     "card_expired",
     "already_stamped",
+    "no_match",
     "participant_conflict",
     "payload_too_large",
     "not_implemented",
@@ -270,11 +314,6 @@ export const CreateCardBody = z
     }
   })
   .openapi("CreateCardBody");
-
-export const UpdateCardBody = z
-  .object({ title: CardTitle.optional(), deadline: Deadline.optional() })
-  .refine((b) => b.title !== undefined || b.deadline !== undefined, "set title or deadline")
-  .openapi("UpdateCardBody");
 
 export const UpdateItemBody = z
   .object({ title: ItemTitle.optional(), emoji: Emoji.optional() })
