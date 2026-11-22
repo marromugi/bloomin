@@ -59,6 +59,7 @@ const edits: [string, (sql: string) => string][] = [
     replaceOnce(",\n\tFOREIGN KEY (`sent_by`) REFERENCES `participants`(`id`) ON UPDATE no action ON DELETE no action", "")(
       replaceOnce("`sent_by` text NOT NULL,", "`sent_by` text NOT NULL REFERENCES participants(id) COLLATE NOCASE CHECK(`sent_by` <> `comment`),")(sql),
     )],
+  ["SQL-looking text inside a string literal", replaceOnce("'image/heic')", "'image/heic REFERENCES x(y)')")],
   ["a trigger", (sql) => `${sql}\n--> statement-breakpoint\nCREATE TRIGGER t AFTER INSERT ON notes BEGIN SELECT 1; END;`],
   ["a view", (sql) => `${sql}\n--> statement-breakpoint\nCREATE VIEW v AS SELECT id FROM cards;`],
   ["user_version", (sql) => `${sql}\n--> statement-breakpoint\nPRAGMA user_version = 7;`],

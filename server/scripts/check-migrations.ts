@@ -27,6 +27,13 @@ const inOrder = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON
 const INLINE_REFERENCE =
   / REFERENCES [`"]?\w+[`"]? ?\([^)]*\)( ON (DELETE|UPDATE) (SET NULL|SET DEFAULT|CASCADE|RESTRICT|NO ACTION))*( MATCH \w+)?( (NOT )?DEFERRABLE( INITIALLY (DEFERRED|IMMEDIATE))?)?/gi;
 
+/** The item with its inline REFERENCES clause removed; string literals are set aside first so their text is kept. */
+function withoutInlineReference(item: string): string {
+  const literals: string[] = [];
+  const masked = item.replace(/'(?:[^']|'')*'/g, (literal) => `\u0000${String(literals.push(literal) - 1)}\u0000`);
+  return masked.replace(INLINE_REFERENCE, "").replace(/\u0000(\d+)\u0000/g, (_, n: string) => literals[Number(n)] ?? "");
+}
+
 /** The SQL with its line and block comments removed, leaving quoted text alone. */
 function withoutComments(sql: string): string {
   let out = "";
@@ -85,7 +92,7 @@ function tablePieces(sql: string): { definitions: string[]; options: string; def
   items.push(text.slice(start, i).trim());
   const definitions = items
     .filter((item) => !/^(CONSTRAINT \S+ )?FOREIGN KEY\b/i.test(item))
-    .map((item) => item.replace(INLINE_REFERENCE, ""))
+    .map(withoutInlineReference)
     .sort();
   const deferrable = (text.match(/(NOT )?DEFERRABLE( INITIALLY (DEFERRED|IMMEDIATE))?/gi) ?? []).sort();
   return { definitions, options: text.slice(i + 1).trim(), deferrable };
