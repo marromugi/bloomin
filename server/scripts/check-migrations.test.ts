@@ -68,9 +68,10 @@ await test("passes a correct follow-up migration that adds a foreign-key column"
     const migrations = join(work, "migrations");
     cpSync(join(root, "migrations"), migrations, { recursive: true });
     const schema = readFileSync(join(root, "src/db/schema.ts"), "utf8");
-    const anchor = '    comment: text("comment").notNull(),\n    sentAt: integer("sent_at").notNull(),';
+    const anchor = '    comment: text("comment").notNull(),';
     assert.ok(schema.includes(anchor), "the notes table changed; update this test");
     const changed = join(work, "schema.ts");
+    // In the middle of the table, where ALTER's appended column sits in a different place from a fresh CREATE.
     writeFileSync(changed, schema.replace(anchor, `${anchor}\n    replyTo: text("reply_to").references(() => participants.id),`));
     const generate = spawnSync(
       "pnpm",
