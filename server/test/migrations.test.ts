@@ -111,3 +111,21 @@ describe("constraints", () => {
     expect(await env.DB.prepare("SELECT count(*) AS n FROM stamps WHERE item_id = 'ci1'").first("n")).toBe(0);
   });
 });
+
+it("deletes a card's items, stamps, bingos and photos with the card", async () => {
+  const doomed = "44444444-4444-4444-8444-444444444444";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'd', 4, '2026-12-31', 'UTC', 'EEEEEEEEEE', ?, 0)").bind(doomed, participant),
+    env.DB.prepare("INSERT INTO items VALUES ('di1', ?, 0, 't', '🌅')").bind(doomed),
+    env.DB.prepare("INSERT INTO stamps VALUES ('di1', ?, ?, 'x', 0)").bind(doomed, participant),
+    env.DB.prepare("INSERT INTO bingos VALUES ('db1', ?, 0)").bind(doomed),
+    env.DB.prepare("INSERT INTO photos VALUES ('dp1', ?, 'db1', ?, 0, 0, 'image/jpeg', 'key-d')").bind(doomed, participant),
+  ]);
+  await env.DB.prepare("DELETE FROM cards WHERE id = ?").bind(doomed).run();
+  const counts = await env.DB.prepare(
+    "SELECT (SELECT count(*) FROM items WHERE card_id = ?1) + (SELECT count(*) FROM stamps WHERE card_id = ?1) + (SELECT count(*) FROM bingos WHERE card_id = ?1) + (SELECT count(*) FROM photos WHERE card_id = ?1) AS n",
+  )
+    .bind(doomed)
+    .first("n");
+  expect(counts).toBe(0);
+});

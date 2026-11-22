@@ -27,6 +27,17 @@ describe("every route is a stub until it is built", () => {
   });
 });
 
+describe("unexpected errors", () => {
+  it("are thrown on, not turned into 400", async () => {
+    const withFault = createApp();
+    withFault.get("/fault", async () => {
+      await Promise.resolve();
+      throw new Error("fault");
+    });
+    await expect(withFault.request("/fault")).rejects.toThrow("fault");
+  });
+});
+
 describe("request validation", () => {
   const post = (path: string, body: unknown) =>
     app.request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

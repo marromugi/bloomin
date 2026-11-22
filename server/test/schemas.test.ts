@@ -44,6 +44,7 @@ describe("PublicKey", () => {
     ["order 8", "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"],
     ["y not below p", "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"],
     ["y = p + 3, a large-order point written non-canonically", "f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"],
+    ["y = 2, not on the curve", "0200000000000000000000000000000000000000000000000000000000000000"],
     ["x = 0 with the sign bit set", "0100000000000000000000000000000000000000000000000000000000000080"],
   ])("refuses a key of %s", (_, hex) => {
     expect(PublicKey.safeParse(base64OfHex(hex)).success).toBe(false);
