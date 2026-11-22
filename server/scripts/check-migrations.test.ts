@@ -72,6 +72,7 @@ const edits: [string, (sql: string) => string][] = [
     )],
   ["SQL-looking text inside a string literal", replaceOnce("'image/heic')", "'image/heic REFERENCES x(y)')")],
   ["a foreign key's source column", replaceOnce("FOREIGN KEY (`sent_by`) REFERENCES `participants`(`id`)", "FOREIGN KEY (`card_id`) REFERENCES `participants`(`id`)")],
+  ["the only string literal of a CHECK", replaceOnce(`"used_signatures"."expires_at") = 'integer'`, `"used_signatures"."expires_at") = 'real'`)],
   ["a trigger", (sql) => `${sql}\n--> statement-breakpoint\nCREATE TRIGGER t AFTER INSERT ON notes BEGIN SELECT 1; END;`],
   ["a view", (sql) => `${sql}\n--> statement-breakpoint\nCREATE VIEW v AS SELECT id FROM cards;`],
   ["user_version", (sql) => `${sql}\n--> statement-breakpoint\nPRAGMA user_version = 7;`],
