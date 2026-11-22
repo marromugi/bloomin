@@ -1,0 +1,37 @@
+{
+  "description": "Ed25519 request signing examples for the bloomin API. The private key is for tests only.",
+  "privateKeySeedBase64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "publicKeyBase64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+  "cases": [
+    {
+      "name": "get without body",
+      "method": "GET",
+      "pathAndQuery": "/v1/participants/me",
+      "timestamp": "1795000000",
+      "bodyBase64": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signingString": "bloomin-v1\nGET\n/v1/participants/me\n1795000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "FJIjepAHKHGve+YIIAmcbe1qESq2/N4L84SuRBaNPyKpFnoHqdB0UggCMhIjb3EWF0VoTKGnNT0k3nPKCdOnCQ=="
+    },
+    {
+      "name": "register with JSON body",
+      "method": "POST",
+      "pathAndQuery": "/v1/participants",
+      "timestamp": "1795000000",
+      "bodyBase64": "eyJpZCI6IjNmMmExYzllLThiN2QtNGU2Zi05YTBiLTFjMmQzZTRmNWE2YiIsInB1YmxpY0tleSI6IkE2RUh2L1BPRUw0ZGNOMFk1MHZBbVdmazFqQ2JwUTFmSGR5R1pCSlZNYmc9IiwiZGlzcGxheU5hbWUiOiLjgb/jganjgooifQ==",
+      "bodySha256": "77849996fe5f0d45d3193a9902a9e82aff7739df3ee7be6f19ea4b4eaecb33b8",
+      "signingString": "bloomin-v1\nPOST\n/v1/participants\n1795000000\n77849996fe5f0d45d3193a9902a9e82aff7739df3ee7be6f19ea4b4eaecb33b8",
+      "signature": "qJRdqm1w/hnghQQd4fscyzVx8iQcLPmTUE8ihfFqG4+nEQPx72AsQlXfmd0UmYPB1bWFragX3T5fwpC+yNtQAQ=="
+    },
+    {
+      "name": "path with query",
+      "method": "POST",
+      "pathAndQuery": "/v1/cards/0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817/bingos/8e7d6c5b-4a39-4281-b0f1-e2d3c4b5a697/photos?takenAt=2026-11-22T09:30:00.000Z",
+      "timestamp": "1795000300",
+      "bodyBase64": "/9j/4CBub3QgcmVhbGx5IGEganBlZw==",
+      "bodySha256": "5368e7b92b51f4d19d0319af90a37a3795fb9f0ac3c0a64edd06eb7792bd4f78",
+      "signingString": "bloomin-v1\nPOST\n/v1/cards/0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817/bingos/8e7d6c5b-4a39-4281-b0f1-e2d3c4b5a697/photos?takenAt=2026-11-22T09:30:00.000Z\n1795000300\n5368e7b92b51f4d19d0319af90a37a3795fb9f0ac3c0a64edd06eb7792bd4f78",
+      "signature": "EmF+JVNcIltladlqfpTaaSjWym5VH7YJ71fzRWhjclrnNBCZW3CUyXSv8rbsdrOLxdGBk5xdQzKYfGj8bUx3CQ=="
+    }
+  ]
+}

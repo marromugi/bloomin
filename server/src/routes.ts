@@ -1,0 +1,287 @@
+import { createRoute, z } from "@hono/zod-openapi";
+import {
+  BingoId,
+  Card,
+  CardId,
+  CardSummary,
+  CreateCardBody,
+  ErrorBody,
+  ItemId,
+  Item,
+  JoinBody,
+  JoinCodeResult,
+  Participant,
+  Photo,
+  PhotoId,
+  PhotoUploadQuery,
+  PHOTO_MAX_BYTES,
+  RegisterParticipantBody,
+  ResizeCardBody,
+  StampBody,
+  StampResult,
+  UpdateCardBody,
+  UpdateItemBody,
+  UpdateParticipantBody,
+} from "./schemas";
+
+function json<T extends z.ZodType>(schema: T, description: string) {
+  return { description, content: { "application/json": { schema } } };
+}
+
+function error(description: string) {
+  return json(ErrorBody, description);
+}
+
+function body<T extends z.ZodType>(schema: T) {
+  return { required: true, content: { "application/json": { schema } } };
+}
+
+const common = {
+  400: error("`invalid_request`: the body, path or query does not match the schema."),
+  401: error(
+    "`unauthorized`: a signature header is missing, the participant is unknown, the timestamp is more than 300 seconds from the server's clock, or the signature does not verify.",
+  ),
+};
+
+const onCard = {
+  ...common,
+  404: error("`not_found`: the card does not exist or the caller is not a member of it."),
+};
+
+const writesCard = {
+  ...onCard,
+  403: error("`card_expired`: the card is past its deadline and is read-only."),
+};
+
+const cardParams = z.object({ cardId: CardId.openapi({ param: { name: "cardId", in: "path" } }) });
+const itemParams = cardParams.extend({ itemId: ItemId.openapi({ param: { name: "itemId", in: "path" } }) });
+const bingoParams = cardParams.extend({ bingoId: BingoId.openapi({ param: { name: "bingoId", in: "path" } }) });
+const photoParams = cardParams.extend({ photoId: PhotoId.openapi({ param: { name: "photoId", in: "path" } }) });
+
+export const registerParticipant = createRoute({
+  operationId: "registerParticipant",
+  tags: ["participants"],
+  method: "post",
+  path: "/v1/participants",
+  summary: "Register this device's participant",
+  description:
+    "No login. Signed like every other request, with the private key of the public key in the body; the server checks the signature with that key. Registering again with the same id and key returns the existing participant.",
+  request: { body: body(RegisterParticipantBody) },
+  responses: {
+    201: json(Participant, "Registered."),
+    200: json(Participant, "Already registered with the same key."),
+    ...common,
+    409: error("`participant_conflict`: the id is registered with a different key."),
+  },
+});
+
+export const getMe = createRoute({
+  operationId: "getMe",
+  tags: ["participants"],
+  method: "get",
+  path: "/v1/participants/me",
+  summary: "The calling participant",
+  responses: { 200: json(Participant, "The participant."), ...common },
+});
+
+export const updateMe = createRoute({
+  operationId: "updateMe",
+  tags: ["participants"],
+  method: "patch",
+  path: "/v1/participants/me",
+  summary: "Change the display name",
+  request: { body: body(UpdateParticipantBody) },
+  responses: { 200: json(Participant, "Updated."), ...common },
+});
+
+export const listCards = createRoute({
+  operationId: "listCards",
+  tags: ["cards"],
+  method: "get",
+  path: "/v1/cards",
+  summary: "Cards the caller is a member of",
+  responses: {
+    200: json(z.object({ cards: z.array(CardSummary) }), "Newest first."),
+    ...common,
+  },
+});
+
+export const createCard = createRoute({
+  operationId: "createCard",
+  tags: ["cards"],
+  method: "post",
+  path: "/v1/cards",
+  summary: "Create a card",
+  description: "The caller becomes its creator and first member. The server makes the join code.",
+  request: { body: body(CreateCardBody) },
+  responses: { 201: json(Card, "Created."), ...common },
+});
+
+export const getCard = createRoute({
+  operationId: "getCard",
+  tags: ["cards"],
+  method: "get",
+  path: "/v1/cards/{cardId}",
+  summary: "The whole card",
+  description: "Allowed after the deadline.",
+  request: { params: cardParams },
+  responses: { 200: json(Card, "The card."), ...onCard },
+});
+
+export const updateCard = createRoute({
+  operationId: "updateCard",
+  tags: ["cards"],
+  method: "patch",
+  path: "/v1/cards/{cardId}",
+  summary: "Change the title or the deadline",
+  description: "Any member.",
+  request: { params: cardParams, body: body(UpdateCardBody) },
+  responses: { 200: json(Card, "Updated."), ...writesCard },
+});
+
+export const resizeCard = createRoute({
+  operationId: "resizeCard",
+  tags: ["cards"],
+  method: "put",
+  path: "/v1/cards/{cardId}/size",
+  summary: "Change the size",
+  description:
+    "Any member, also after the card has started. Every item is placed again at random. Bingo records stay as they are.",
+  request: { params: cardParams, body: body(ResizeCardBody) },
+  responses: {
+    200: json(Card, "Resized."),
+    ...writesCard,
+    404: error("`not_found`: the card does not exist, the caller is not a member, or an item id is not on this card."),
+  },
+});
+
+export const updateItem = createRoute({
+  operationId: "updateItem",
+  tags: ["items"],
+  method: "patch",
+  path: "/v1/cards/{cardId}/items/{itemId}",
+  summary: "Edit an item",
+  description: "Any member, also after the card has started. A stamp on the item stays.",
+  request: { params: itemParams, body: body(UpdateItemBody) },
+  responses: { 200: json(Item, "Updated."), ...writesCard },
+});
+
+export const stampItem = createRoute({
+  operationId: "stampItem",
+  tags: ["stamps"],
+  method: "put",
+  path: "/v1/cards/{cardId}/items/{itemId}/stamp",
+  summary: "Stamp an item",
+  description:
+    "Records who stamped, the comment and the time, then records any bingo it completed. When two stamps arrive for one item, the first one to arrive wins.",
+  request: { params: itemParams, body: body(StampBody) },
+  responses: {
+    201: json(StampResult, "Stamped."),
+    ...writesCard,
+    409: error("`already_stamped`: the item already has a stamp."),
+  },
+});
+
+export const unstampItem = createRoute({
+  operationId: "unstampItem",
+  tags: ["stamps"],
+  method: "delete",
+  path: "/v1/cards/{cardId}/items/{itemId}/stamp",
+  summary: "Remove a stamp",
+  description: "Any member, whoever stamped it. Bingos already recorded stay.",
+  request: { params: itemParams },
+  responses: {
+    204: { description: "Removed." },
+    ...writesCard,
+    404: error("`not_found`: the card or item does not exist, the caller is not a member, or the item has no stamp."),
+  },
+});
+
+export const uploadPhoto = createRoute({
+  operationId: "uploadPhoto",
+  tags: ["photos"],
+  method: "post",
+  path: "/v1/cards/{cardId}/bingos/{bingoId}/photos",
+  summary: "Add a photo to a bingo",
+  description: `Allowed after the deadline. The body is the image bytes, at most ${PHOTO_MAX_BYTES} bytes; its SHA-256 is part of the signature like any body.`,
+  request: {
+    params: bingoParams,
+    query: PhotoUploadQuery,
+    body: {
+      required: true,
+      content: {
+        "image/jpeg": { schema: z.string().openapi({ format: "binary" }) },
+        "image/heic": { schema: z.string().openapi({ format: "binary" }) },
+      },
+    },
+  },
+  responses: {
+    201: json(Photo, "Stored."),
+    ...onCard,
+    413: error("`payload_too_large`: the image is larger than the limit."),
+  },
+});
+
+export const getPhoto = createRoute({
+  operationId: "getPhoto",
+  tags: ["photos"],
+  method: "get",
+  path: "/v1/cards/{cardId}/photos/{photoId}",
+  summary: "The image of a photo",
+  request: { params: photoParams },
+  responses: {
+    200: {
+      description: "The image bytes, with the photo's content type.",
+      content: {
+        "image/jpeg": { schema: z.string().openapi({ format: "binary" }) },
+        "image/heic": { schema: z.string().openapi({ format: "binary" }) },
+      },
+    },
+    ...onCard,
+  },
+});
+
+export const rotateJoinCode = createRoute({
+  operationId: "rotateJoinCode",
+  tags: ["joining"],
+  method: "post",
+  path: "/v1/cards/{cardId}/join-code",
+  summary: "Make a new join code",
+  description: "Any member. The old code, and every QR made from it, stops working.",
+  request: { params: cardParams },
+  responses: { 200: json(JoinCodeResult, "The new code."), ...writesCard },
+});
+
+export const joinCard = createRoute({
+  operationId: "joinCard",
+  tags: ["joining"],
+  method: "post",
+  path: "/v1/joins",
+  summary: "Join a card with its join code",
+  description:
+    "Allowed after the deadline; the card is then read-only for the new member too. Joining a card the caller is already a member of returns it unchanged.",
+  request: { body: body(JoinBody) },
+  responses: {
+    200: json(Card, "Joined."),
+    ...common,
+    404: error("`not_found`: no card has this join code."),
+  },
+});
+
+export const routes = [
+  registerParticipant,
+  getMe,
+  updateMe,
+  listCards,
+  createCard,
+  getCard,
+  updateCard,
+  resizeCard,
+  updateItem,
+  stampItem,
+  unstampItem,
+  uploadPhoto,
+  getPhoto,
+  rotateJoinCode,
+  joinCard,
+] as const;

@@ -16,3 +16,7 @@ build/
 *.ipa
 *.dSYM.zip
 *.dSYM
+
+# Node / Cloudflare
+node_modules/
+.wrangler/
