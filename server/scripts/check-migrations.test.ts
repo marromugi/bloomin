@@ -39,6 +39,14 @@ const edits: [string, (sql: string) => string][] = [
   ["a cascade", replaceOnce("ON DELETE cascade", "ON DELETE no action")],
   ["an index", (sql) => sql.replace(/CREATE INDEX `photos_by_bingo`[^;]*;/, "")],
   ["a seeded row", (sql) => `${sql}\n--> statement-breakpoint\nINSERT INTO used_signatures VALUES ('s', 1);`],
+  ["a collation", replaceOnce("`join_code` text NOT NULL,", "`join_code` text NOT NULL COLLATE NOCASE,")],
+  ["a STRICT table", replaceOnce(`= 'integer')\n);`, `= 'integer')\n) STRICT;`)],
+  ["a conflict clause", replaceOnce("`item_id` text PRIMARY KEY NOT NULL,", "`item_id` text PRIMARY KEY ON CONFLICT REPLACE NOT NULL,")],
+  ["a deferred foreign key", replaceOnce("REFERENCES `notes`(`id`,`card_id`) ON UPDATE no action ON DELETE cascade", "REFERENCES `notes`(`id`,`card_id`) ON UPDATE no action ON DELETE cascade DEFERRABLE INITIALLY DEFERRED")],
+  ["an index collation", replaceOnce("ON `cards` (`join_code`)", "ON `cards` (`join_code` COLLATE NOCASE)")],
+  ["an index sort order", replaceOnce("ON `photos` (`bingo_id`)", "ON `photos` (`bingo_id` DESC)")],
+  ["a trigger", (sql) => `${sql}\n--> statement-breakpoint\nCREATE TRIGGER t AFTER INSERT ON notes BEGIN SELECT 1; END;`],
+  ["a view", (sql) => `${sql}\n--> statement-breakpoint\nCREATE VIEW v AS SELECT id FROM cards;`],
   ["user_version", (sql) => `${sql}\n--> statement-breakpoint\nPRAGMA user_version = 7;`],
 ];
 

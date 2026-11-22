@@ -220,7 +220,7 @@ export const uploadPhoto = createRoute({
     200: json(Photo, "This caller already stored a photo with this id for this bingo; nothing changed."),
     ...onCard,
     404: error("`not_found`: the card or the bingo does not exist, or the caller is not a member of the card."),
-    409: error("`id_conflict`: the photoId belongs to another photo."),
+    409: error("`id_conflict`: the photoId belongs to another photo, including one of the caller's on another bingo."),
     413: error("`payload_too_large`: the image is larger than the limit."),
   },
 });

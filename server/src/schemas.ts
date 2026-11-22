@@ -16,7 +16,8 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const UTC_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
 const FORBIDDEN_IN_TEXT = /[\p{Cc}\p{Co}\p{Cn}\u2028\u2029\u202A-\u202E\u2066-\u2069\u{E0000}-\u{E007F}]/u;
 const BLANK_LOOKING = /[\u115F\u1160\u3164\uFFA0\u2800\uFFFC\u{1D159}]/gu;
-const TAG_FLAG = /\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F}/gu;
+/** A subdivision flag (🏴 + tag letters of an ISO 3166-2 code + cancel tag), the one use of tag characters let into text. */
+const TAG_FLAG = /\u{1F3F4}[\u{E0061}-\u{E007A}]{2}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{1,4}\u{E007F}/gu;
 const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
 const EMOJI = /\p{Extended_Pictographic}|^\p{Regional_Indicator}{2}$|^[0-9#*]\uFE0F?\u20E3$/u;
 

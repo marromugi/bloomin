@@ -1541,7 +1541,7 @@
             }
           },
           "409": {
-            "description": "`id_conflict`: the photoId belongs to another photo.",
+            "description": "`id_conflict`: the photoId belongs to another photo, including one of the caller's on another bingo.",
             "content": {
               "application/json": {
                 "schema": {

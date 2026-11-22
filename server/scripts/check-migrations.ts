@@ -1,5 +1,6 @@
 // Fails when applying the committed migrations gives a different database from the one the Drizzle schema generates from scratch:
-// different tables, columns, indexes, foreign keys, CHECK constraints, rows, or user_version.
+// different table definitions (columns, collations, constraints, options), indexes, foreign keys, rows, triggers, views,
+// or user_version.
 // Usage: tsx scripts/check-migrations.ts [migrations directory, default ./migrations]
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -13,44 +14,61 @@ const committedDir = process.argv[2] ?? join(root, "migrations");
 
 interface Built {
   tables: Record<string, unknown>;
+  triggersAndViews: unknown[];
   userVersion: unknown;
 }
 
 const all = (db: DatabaseSync, sql: string) => db.prepare(sql).all();
 const inOrder = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON.stringify(b));
 
-/** The text inside each CHECK(...), found by matching parentheses. */
-function checkClauses(sql: string): string[] {
-  const clauses: string[] = [];
-  for (const match of sql.matchAll(/CHECK ?\(/gi)) {
-    const start = match.index + match[0].length;
-    let depth = 1;
-    let i = start;
-    for (; i < sql.length && depth > 0; i++) {
-      if (sql[i] === "(") depth++;
-      else if (sql[i] === ")") depth--;
+/**
+ * The pieces of a CREATE TABLE: each top-level item of its column list (a column with its type, COLLATE and so on, or a
+ * table constraint) and the options after the list (such as STRICT), with whitespace collapsed. ALTER TABLE ADD appends
+ * the same piece a fresh CREATE TABLE would have, so a set of pieces compares equal either way.
+ */
+function tablePieces(sql: string): { definitions: string[]; options: string } {
+  const text = sql.replace(/\s+/g, " ");
+  const open = text.indexOf("(");
+  if (open < 0) throw new Error(`no column list in ${sql}`);
+  const definitions: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = open + 1;
+  let i = open + 1;
+  for (; i < text.length; i++) {
+    const c = text.charAt(i);
+    if (quote !== null) {
+      if (c === quote) quote = null;
+    } else if (c === "'" || c === '"' || c === "`") quote = c;
+    else if (c === "(") depth++;
+    else if (c === ")") {
+      if (depth === 0) break;
+      depth--;
+    } else if (c === "," && depth === 0) {
+      definitions.push(text.slice(start, i).trim());
+      start = i + 1;
     }
-    if (depth !== 0) throw new Error(`unbalanced CHECK in ${sql}`);
-    clauses.push(sql.slice(start, i - 1));
   }
-  return clauses;
+  if (i === text.length) throw new Error(`unbalanced column list in ${sql}`);
+  definitions.push(text.slice(start, i).trim());
+  return { definitions: definitions.sort(), options: text.slice(i + 1).trim() };
 }
 
 /** Structure as SQLite reports it, so the same table made by CREATE or by CREATE then ALTER compares equal. */
 function describeTable(db: DatabaseSync, name: string, sql: string) {
   const quoted = `"${name}"`;
-  const checks = checkClauses(sql.replace(/\s+/g, " ")).sort();
+  const pieces = tablePieces(sql);
   return {
     columns: all(db, `PRAGMA table_xinfo(${quoted})`)
       .map(({ cid, ...column }) => column)
       .sort(inOrder),
     indexes: all(db, `PRAGMA index_list(${quoted})`)
-      .map(({ seq, ...index }) => ({ ...index, columns: all(db, `PRAGMA index_info("${String(index.name)}")`).map((c) => c.name) }))
+      .map(({ seq, ...index }) => ({ ...index, columns: all(db, `PRAGMA index_xinfo("${String(index.name)}")`).map(({ seqno, ...c }) => c) }))
       .sort(inOrder),
     foreignKeys: all(db, `PRAGMA foreign_key_list(${quoted})`)
       .map(({ id, seq, ...key }) => key)
       .sort(inOrder),
-    checks,
+    pieces,
     rows: all(db, `SELECT * FROM ${quoted} ORDER BY 1`),
   };
 }
@@ -66,9 +84,12 @@ function build(migrationsDir: string): Built {
   for (const row of all(db, "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")) {
     tables[String(row.name)] = describeTable(db, String(row.name), String(row.sql));
   }
+  const triggersAndViews = all(db, "SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger', 'view') ORDER BY type, name").map(
+    (row) => ({ ...row, sql: String(row.sql).replace(/\s+/g, " ") }),
+  );
   const userVersion = db.prepare("PRAGMA user_version").get();
   db.close();
-  return { tables, userVersion };
+  return { tables, triggersAndViews, userVersion };
 }
 
 const fresh = mkdtempSync(join(tmpdir(), "bloomin-migrations-"));
