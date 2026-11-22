@@ -96,7 +96,7 @@ describe("Emoji", () => {
   it.each([flagOf("gbeng"), flagOf("gbwls"), "🌅", "👨‍👩‍👧‍👦", "🇯🇵", "1️⃣", "#\u20E3", "👍🏽", "❤️", "🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}"])("accepts %s", (v) => {
     expect(Emoji.safeParse(v).success).toBe(true);
   });
-  it.each(["", " ", "a", "abc", "🌅🌅", "🌅 ", "1", "a\u20E3", "\u{1F1EF}", "◯", flagOf("allmatch"), flagOf("jp13"), "🌅\u{E0041}"])("refuses %j", (v) => {
+  it.each(["", " ", "a", "abc", "🌅🌅", "🌅 ", "1", "a\u20E3", "\u{1F1EF}", "◯", flagOf("allmatch"), flagOf("jp13"), "🌅\u{E0041}", "🌅\u{E0000}", "🌅\u{E0001}", "🌅\u{E007F}", "🌅\u{E0020}"])("refuses %j", (v) => {
     expect(Emoji.safeParse(v).success).toBe(false);
   });
 });

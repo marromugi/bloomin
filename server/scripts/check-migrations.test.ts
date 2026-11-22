@@ -34,6 +34,17 @@ await test("passes the committed migrations", () => {
   assert.equal(checkWith((sql) => sql), 0);
 });
 
+await test("passes the same foreign key written inline with its ON clauses", () => {
+  const inline = (sql: string) =>
+    replaceOnce("\tFOREIGN KEY (`card_id`) REFERENCES `cards`(`id`) ON UPDATE no action ON DELETE cascade,\n\tFOREIGN KEY (`sent_by`)", "\tFOREIGN KEY (`sent_by`)")(
+      replaceOnce(
+        "CREATE TABLE `notes` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`card_id` text NOT NULL,",
+        "CREATE TABLE `notes` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`card_id` text NOT NULL REFERENCES `cards`(`id`) ON UPDATE no action ON DELETE cascade,",
+      )(sql),
+    );
+  assert.equal(checkWith(inline), 0);
+});
+
 const edits: [string, (sql: string) => string][] = [
   ["a CHECK value", replaceOnce("= 44", "= 43")],
   ["a cascade", replaceOnce("ON DELETE cascade", "ON DELETE no action")],
@@ -60,6 +71,7 @@ const edits: [string, (sql: string) => string][] = [
       replaceOnce("`sent_by` text NOT NULL,", "`sent_by` text NOT NULL REFERENCES participants(id) COLLATE NOCASE CHECK(`sent_by` <> `comment`),")(sql),
     )],
   ["SQL-looking text inside a string literal", replaceOnce("'image/heic')", "'image/heic REFERENCES x(y)')")],
+  ["a foreign key's source column", replaceOnce("FOREIGN KEY (`sent_by`) REFERENCES `participants`(`id`)", "FOREIGN KEY (`card_id`) REFERENCES `participants`(`id`)")],
   ["a trigger", (sql) => `${sql}\n--> statement-breakpoint\nCREATE TRIGGER t AFTER INSERT ON notes BEGIN SELECT 1; END;`],
   ["a view", (sql) => `${sql}\n--> statement-breakpoint\nCREATE VIEW v AS SELECT id FROM cards;`],
   ["user_version", (sql) => `${sql}\n--> statement-breakpoint\nPRAGMA user_version = 7;`],
