@@ -42,9 +42,11 @@ export async function canonicalString(parts: SignedParts): Promise<string> {
   ].join("\n");
 }
 
-/** `raw` is the 32-byte key as stored at registration, already vetted by the `PublicKey` schema. */
-export async function importPublicKey(raw: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", new Uint8Array(raw), { name: "Ed25519" }, false, ["verify"]);
+/** `stored` is the base64 text kept in `participants.public_key`, vetted by the `PublicKey` schema at registration. */
+export async function importPublicKey(stored: string): Promise<CryptoKey> {
+  const raw = decodeCanonicalBase64(stored, 32);
+  if (raw === null) throw new Error(`stored public key is not canonical base64 of 32 bytes: ${stored}`);
+  return crypto.subtle.importKey("raw", raw, { name: "Ed25519" }, false, ["verify"]);
 }
 
 export async function verifySignature(

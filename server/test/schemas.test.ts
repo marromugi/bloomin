@@ -98,7 +98,7 @@ describe("Emoji", () => {
 });
 
 describe("one-line text", () => {
-  it.each(["a\nb", "a\rb", "a\u2028b", "a\u2029b", "a\u0085b", "a\u000Bb", "a\u000Cb", "a\u0000b", "\ud800", "\u200B", "\u200B\u200D"])("refuses %j", (v) => {
+  it.each(["a\nb", "a\rb", "a\u2028b", "a\u2029b", "a\u0085b", "a\u000Bb", "a\u000Cb", "a\u0000b", "\ud800", "\u200B", "\u200B\u200D", "\u3164", "\uFFA0", "\u2800", "\uFE0F", "\u0301", "\uE000", "\u0378", "a\u202Eb", "\u{E0020}a"])("refuses %j", (v) => {
     expect(Comment.safeParse(v).success).toBe(false);
     expect(CardTitle.safeParse(v).success).toBe(false);
   });
@@ -120,10 +120,14 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")
 
 describe("CreateCardBody", () => {
   const card = (size: number, positions: number[]) => ({
+    id: "0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817",
     title: "card",
     size,
     deadline: { date: "2026-12-31", timeZone: "Asia/Tokyo" },
     items: positions.map((position) => ({ position, ...item(position) })),
+  });
+  it("accepts the open cells of size 3", () => {
+    expect(CreateCardBody.safeParse(card(3, [0, 1, 2, 3, 5, 6, 7, 8])).success).toBe(true);
   });
   it("refuses a position past the last cell when the count is right", () => {
     expect(CreateCardBody.safeParse(card(3, [0, 1, 2, 3, 5, 6, 7, 9])).success).toBe(false);

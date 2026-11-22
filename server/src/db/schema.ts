@@ -11,7 +11,12 @@ export const participants = sqliteTable(
     displayName: text("display_name").notNull(),
     createdAt: integer("created_at").notNull(),
   },
-  (t) => [check("participants_public_key_length", sql`length(${t.publicKey}) = 44`)],
+  (t) => [
+    check(
+      "participants_public_key_base64",
+      sql`typeof(${t.publicKey}) = 'text' AND length(${t.publicKey}) = 44 AND ${t.publicKey} NOT GLOB '*[^A-Za-z0-9+/=]*'`,
+    ),
+  ],
 );
 
 export const cards = sqliteTable(
@@ -63,21 +68,36 @@ export const items = sqliteTable(
   ],
 );
 
-/** One stamp per item: the primary key makes the first insert win. */
+/** Every note sent, whether or not it stamped anything, so a retry with the same id is not judged again. */
+export const notes = sqliteTable(
+  "notes",
+  {
+    id: text("id").primaryKey(),
+    cardId: text("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    sentBy: text("sent_by")
+      .notNull()
+      .references(() => participants.id),
+    comment: text("comment").notNull(),
+    sentAt: integer("sent_at").notNull(),
+  },
+  (t) => [unique("notes_id_card").on(t.id, t.cardId)],
+);
+
+/** One stamp per item: the primary key makes the first insert win. Who stamped, the comment and the time are the note's. */
 export const stamps = sqliteTable(
   "stamps",
   {
     itemId: text("item_id").primaryKey(),
     cardId: text("card_id").notNull(),
-    stampedBy: text("stamped_by")
-      .notNull()
-      .references(() => participants.id),
-    comment: text("comment").notNull(),
-    stampedAt: integer("stamped_at").notNull(),
+    noteId: text("note_id").notNull(),
   },
   (t) => [
     foreignKey({ columns: [t.itemId, t.cardId], foreignColumns: [items.id, items.cardId] }).onDelete("cascade"),
+    foreignKey({ columns: [t.noteId, t.cardId], foreignColumns: [notes.id, notes.cardId] }).onDelete("cascade"),
     index("stamps_by_card").on(t.cardId),
+    index("stamps_by_note").on(t.noteId),
   ],
 );
 
@@ -137,5 +157,8 @@ export const usedSignatures = sqliteTable(
     signature: text("signature").primaryKey(),
     expiresAt: integer("expires_at").notNull(),
   },
-  (t) => [index("used_signatures_by_expiry").on(t.expiresAt)],
+  (t) => [
+    check("used_signatures_expires_at", sql`typeof(${t.expiresAt}) = 'integer'`),
+    index("used_signatures_by_expiry").on(t.expiresAt),
+  ],
 );

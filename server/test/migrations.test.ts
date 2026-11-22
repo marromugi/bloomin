@@ -26,6 +26,7 @@ it("creates every table", async () => {
     "card_members",
     "cards",
     "items",
+    "notes",
     "participants",
     "photos",
     "stamps",
@@ -34,11 +35,32 @@ it("creates every table", async () => {
 });
 
 it("keeps the first stamp on an item and refuses the second", async () => {
-  const stamp = env.DB.prepare("INSERT INTO stamps VALUES (?, ?, ?, ?, ?)");
-  await stamp.bind(item, card, participant, "first", 1).run();
-  await expect(stamp.bind(item, card, participant, "second", 2).run()).rejects.toThrow(/UNIQUE constraint failed/);
-  const kept = await env.DB.prepare("SELECT comment FROM stamps WHERE item_id = ?").bind(item).first<{ comment: string }>();
-  expect(kept?.comment).toBe("first");
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO notes VALUES ('n1', ?, ?, 'first', 1)").bind(card, participant),
+    env.DB.prepare("INSERT INTO notes VALUES ('n2', ?, ?, 'second', 2)").bind(card, participant),
+  ]);
+  const stamp = env.DB.prepare("INSERT INTO stamps VALUES (?, ?, ?)");
+  await stamp.bind(item, card, "n1").run();
+  await expect(stamp.bind(item, card, "n2").run()).rejects.toThrow(/UNIQUE constraint failed/);
+  const kept = await env.DB.prepare("SELECT note_id FROM stamps WHERE item_id = ?").bind(item).first<{ note_id: string }>();
+  expect(kept?.note_id).toBe("n1");
+});
+
+it("refuses a stamp whose note is on another card", async () => {
+  const elsewhere = "55555555-5555-4555-8555-555555555555";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'e', 4, '2026-12-31', 'UTC', 'FFFFFFFFFF', ?, 0)").bind(elsewhere, participant),
+    env.DB.prepare("INSERT INTO notes VALUES ('en1', ?, ?, 'x', 0)").bind(elsewhere, participant),
+    env.DB.prepare("INSERT INTO items VALUES ('ei1', ?, 2, 't', '🌅')").bind(card),
+  ]);
+  await expect(env.DB.prepare("INSERT INTO stamps VALUES ('ei1', ?, 'en1')").bind(card).run()).rejects.toThrow(/FOREIGN KEY/);
+});
+
+it.each([
+  ["a public key with characters outside base64", "INSERT INTO participants VALUES ('p-bad', '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', 'x', 0)"],
+  ["an expiry that is not an integer", "INSERT INTO used_signatures VALUES ('sig-text', 'soon')"],
+])("refuses %s", async (_, sql) => {
+  await expect(env.DB.prepare(sql).run()).rejects.toThrow(/CHECK constraint failed/);
 });
 
 it("accepts a signature once", async () => {
@@ -70,7 +92,7 @@ it("refuses a stamp or a photo whose card differs from its item's or bingo's car
     env.DB.prepare("INSERT INTO bingos VALUES ('b1', ?, 0)").bind(card),
   ]);
   await expect(
-    env.DB.prepare("INSERT INTO stamps VALUES (?, ?, ?, 'x', 0)").bind(otherItem, card, participant).run(),
+    env.DB.prepare("INSERT INTO stamps VALUES (?, ?, 'n1')").bind(otherItem, card).run(),
   ).rejects.toThrow(/FOREIGN KEY constraint failed/);
   await expect(
     env.DB.prepare("INSERT INTO photos VALUES ('p1', ?, 'b1', ?, 0, 0, 'image/jpeg', 'k1')").bind(other, participant).run(),
@@ -106,7 +128,10 @@ describe("constraints", () => {
   });
 
   it("deletes a stamp with its item", async () => {
-    await env.DB.prepare("INSERT INTO stamps VALUES ('ci1', ?, ?, 'x', 0)").bind(other, participant).run();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO notes VALUES ('cn1', ?, ?, 'x', 0)").bind(other, participant),
+      env.DB.prepare("INSERT INTO stamps VALUES ('ci1', ?, 'cn1')").bind(other),
+    ]);
     await env.DB.prepare("DELETE FROM items WHERE id = 'ci1'").run();
     expect(await env.DB.prepare("SELECT count(*) AS n FROM stamps WHERE item_id = 'ci1'").first("n")).toBe(0);
   });
@@ -117,7 +142,8 @@ it("deletes a card's items, stamps, bingos and photos with the card", async () =
   await env.DB.batch([
     env.DB.prepare("INSERT INTO cards VALUES (?, 'd', 4, '2026-12-31', 'UTC', 'EEEEEEEEEE', ?, 0)").bind(doomed, participant),
     env.DB.prepare("INSERT INTO items VALUES ('di1', ?, 0, 't', '🌅')").bind(doomed),
-    env.DB.prepare("INSERT INTO stamps VALUES ('di1', ?, ?, 'x', 0)").bind(doomed, participant),
+    env.DB.prepare("INSERT INTO notes VALUES ('dn1', ?, ?, 'x', 0)").bind(doomed, participant),
+    env.DB.prepare("INSERT INTO stamps VALUES ('di1', ?, 'dn1')").bind(doomed),
     env.DB.prepare("INSERT INTO bingos VALUES ('db1', ?, 0)").bind(doomed),
     env.DB.prepare("INSERT INTO photos VALUES ('dp1', ?, 'db1', ?, 0, 0, 'image/jpeg', 'key-d')").bind(doomed, participant),
   ]);

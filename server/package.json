@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "signature-vectors": "tsx scripts/write-signature-vectors.ts",
-    "db:generate": "drizzle-kit generate --name init"
+    "db:generate": "drizzle-kit generate --name init",
+    "db:check": "drizzle-kit generate --name init && tsx scripts/check-migrations.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "1.6.3",

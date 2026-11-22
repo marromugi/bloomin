@@ -92,7 +92,7 @@ ${SIGNATURE_VERSION}
 - \`timestamp\`: the same text as the \`${HEADER_TIMESTAMP}\` header.
 - \`body SHA-256\`: SHA-256 of the raw body bytes, 64 lowercase hex digits. A request without a body hashes zero bytes (\`e3b0c442…b855\`).
 
-The signature is accepted only in its one canonical base64 encoding. The server refuses with 401 when the timestamp is more than ${CLOCK_SKEW_SECONDS} seconds from its clock, or when the signature does not verify with the participant's registered key (for registration, the key in the body, and the participant id header must equal the body \`id\`). A request that changes something (any method but GET) is accepted once: the server remembers its signature until the timestamp leaves the window and refuses the same signature again with 401. A GET may be sent again. To retry a change, sign it again with a new timestamp. Worked examples are in \`server/test-vectors/signature.json\`.
+The signature is accepted only in its one canonical base64 encoding. The server refuses with 401 when the timestamp is more than ${CLOCK_SKEW_SECONDS} seconds from its clock, or when the signature does not verify with the participant's registered key (for registration, the key in the body, and the participant id header must equal the body \`id\`). A request that changes something (any method but GET) is accepted once: the server remembers its signature until the timestamp leaves the window and refuses the same signature again with 401. A GET may be sent again. To retry a change, sign it again with a new timestamp. Requests that create something (a card, a note, a photo) carry an id the app makes, so a retry returns what the first request made instead of making it twice. Worked examples are in \`server/test-vectors/signature.json\`.
 
 ## Deadline
 
@@ -100,7 +100,7 @@ A card stores its last day and the creator's IANA time zone. It expires at 00:00
 
 ## Stamping
 
-Items are never stamped by picking them from the card. The app sends a one-line note to \`POST /v1/cards/{cardId}/stamps\` and the server stamps the items the note fulfils, which may be none or several.
+Items are never stamped by picking them from the card. The app sends a one-line note, with a \`noteId\` it makes, to \`POST /v1/cards/{cardId}/stamps\` and the server stamps the items the note fulfils, which may be none or several.
 
 ## Errors
 

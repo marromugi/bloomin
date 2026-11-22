@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ac83b0e1-21ce-4440-875d-1c9acb55a18c",
+  "id": "fae1c5a2-695d-4343-b797-0e00737e7682",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "bingo_items": {
@@ -373,6 +373,87 @@
         }
       }
     },
+    "notes": {
+      "name": "notes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sent_by": {
+          "name": "sent_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "notes_id_card": {
+          "name": "notes_id_card",
+          "columns": [
+            "id",
+            "card_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "notes_card_id_cards_id_fk": {
+          "name": "notes_card_id_cards_id_fk",
+          "tableFrom": "notes",
+          "tableTo": "cards",
+          "columnsFrom": [
+            "card_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "notes_sent_by_participants_id_fk": {
+          "name": "notes_sent_by_participants_id_fk",
+          "tableFrom": "notes",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "sent_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "participants": {
       "name": "participants",
       "columns": {
@@ -410,9 +491,9 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "participants_public_key_length": {
-          "name": "participants_public_key_length",
-          "value": "length(\"participants\".\"public_key\") = 44"
+        "participants_public_key_base64": {
+          "name": "participants_public_key_base64",
+          "value": "typeof(\"participants\".\"public_key\") = 'text' AND length(\"participants\".\"public_key\") = 44 AND \"participants\".\"public_key\" NOT GLOB '*[^A-Za-z0-9+/=]*'"
         }
       }
     },
@@ -548,23 +629,9 @@
           "notNull": true,
           "autoincrement": false
         },
-        "stamped_by": {
-          "name": "stamped_by",
+        "note_id": {
+          "name": "note_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "comment": {
-          "name": "comment",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "stamped_at": {
-          "name": "stamped_at",
-          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -577,28 +644,37 @@
             "card_id"
           ],
           "isUnique": false
+        },
+        "stamps_by_note": {
+          "name": "stamps_by_note",
+          "columns": [
+            "note_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
-        "stamps_stamped_by_participants_id_fk": {
-          "name": "stamps_stamped_by_participants_id_fk",
-          "tableFrom": "stamps",
-          "tableTo": "participants",
-          "columnsFrom": [
-            "stamped_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "stamps_item_id_card_id_items_id_card_id_fk": {
           "name": "stamps_item_id_card_id_items_id_card_id_fk",
           "tableFrom": "stamps",
           "tableTo": "items",
           "columnsFrom": [
             "item_id",
+            "card_id"
+          ],
+          "columnsTo": [
+            "id",
+            "card_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "stamps_note_id_card_id_notes_id_card_id_fk": {
+          "name": "stamps_note_id_card_id_notes_id_card_id_fk",
+          "tableFrom": "stamps",
+          "tableTo": "notes",
+          "columnsFrom": [
+            "note_id",
             "card_id"
           ],
           "columnsTo": [
@@ -643,7 +719,12 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "used_signatures_expires_at": {
+          "name": "used_signatures_expires_at",
+          "value": "typeof(\"used_signatures\".\"expires_at\") = 'integer'"
+        }
+      }
     }
   },
   "views": {},

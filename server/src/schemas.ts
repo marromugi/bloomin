@@ -14,8 +14,9 @@ const LOWERCASE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 const IANA_NAME = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const UTC_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
-const SINGLE_LINE = /^[^\p{Cc}\u2028\u2029]*$/u;
-const VISIBLE = /[^\p{White_Space}\p{Cf}]/u;
+const FORBIDDEN_IN_TEXT = /[\p{Cc}\p{Co}\p{Cn}\u2028\u2029\u202A-\u202E\u2066-\u2069\u{E0000}-\u{E007F}]/u;
+const BLANK_LOOKING = /[\u115F\u1160\u3164\uFFA0\u2800]/gu;
+const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
 const EMOJI = /\p{Extended_Pictographic}|^\p{Regional_Indicator}{2}$|^[0-9#*]\uFE0F?\u20E3$/u;
 
 /** The regex keeps out UTC offsets, which Intl accepts as time zones. */
@@ -68,8 +69,8 @@ function line(max: number) {
     .trim()
     .min(1)
     .max(max)
-    .regex(SINGLE_LINE, "must be one line without control characters")
-    .regex(VISIBLE, "must contain a visible character")
+    .refine((v) => !FORBIDDEN_IN_TEXT.test(v), "must be one line without control, private-use, unassigned, direction or tag characters")
+    .refine((v) => VISIBLE.test(v.replace(BLANK_LOOKING, "")), "must contain a visible character")
     .refine((v) => v.isWellFormed(), "must be well-formed Unicode");
 }
 
@@ -94,6 +95,9 @@ export const CardId = Uuid.openapi("CardId");
 export const ItemId = Uuid.openapi("ItemId");
 export const BingoId = Uuid.openapi("BingoId");
 export const PhotoId = Uuid.openapi("PhotoId");
+export const NoteId = Uuid.openapi("NoteId", {
+  description: "Made by the app for each note it sends, so a retry can be told from a new note.",
+});
 
 export const PublicKey = z
   .string()
@@ -106,7 +110,7 @@ export const PublicKey = z
 });
 
 const LENGTH_NOTE =
-  "One line with no control characters and at least one visible character; length is counted in Unicode code points after trimming.";
+  "One line without control, private-use, unassigned, direction-override or tag characters, with at least one visible letter, digit, punctuation or symbol; length is counted in Unicode code points after trimming.";
 export const DisplayName = line(32).openapi("DisplayName", { description: LENGTH_NOTE, example: "みどり" });
 export const CardTitle = line(40).openapi("CardTitle", { description: LENGTH_NOTE, example: "冬休みにやること" });
 export const ItemTitle = line(40).openapi("ItemTitle", { description: LENGTH_NOTE, example: "初日の出を見る" });
@@ -191,6 +195,7 @@ export const Item = z
 export const Stamp = z
   .object({
     itemId: ItemId,
+    noteId: NoteId,
     stampedBy: ParticipantId,
     comment: Comment,
     stampedAt: Instant,
@@ -270,6 +275,7 @@ export const ErrorCode = z
     "not_found",
     "card_expired",
     "participant_conflict",
+    "id_conflict",
     "payload_too_large",
     "not_implemented",
   ])
@@ -298,6 +304,7 @@ const NewItem = z.object({ position: Position, title: ItemTitle, emoji: Emoji })
 
 export const CreateCardBody = z
   .object({
+    id: CardId.openapi({ description: "Made by the app, so a retry returns the card the first request made." }),
     title: CardTitle,
     size: Size,
     deadline: Deadline,
@@ -355,7 +362,7 @@ export const ResizeCardBody = z
   })
   .openapi("ResizeCardBody");
 
-export const StampBody = z.object({ comment: Comment }).openapi("StampBody");
+export const StampBody = z.object({ noteId: NoteId, comment: Comment }).openapi("StampBody");
 
 export const StampResult = z
   .object({

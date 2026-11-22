@@ -52,12 +52,23 @@ CREATE TABLE `items` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `items_cell` ON `items` (`card_id`,`position`);--> statement-breakpoint
 CREATE UNIQUE INDEX `items_id_card` ON `items` (`id`,`card_id`);--> statement-breakpoint
+CREATE TABLE `notes` (
+	`id` text PRIMARY KEY NOT NULL,
+	`card_id` text NOT NULL,
+	`sent_by` text NOT NULL,
+	`comment` text NOT NULL,
+	`sent_at` integer NOT NULL,
+	FOREIGN KEY (`card_id`) REFERENCES `cards`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`sent_by`) REFERENCES `participants`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `notes_id_card` ON `notes` (`id`,`card_id`);--> statement-breakpoint
 CREATE TABLE `participants` (
 	`id` text PRIMARY KEY NOT NULL,
 	`public_key` text NOT NULL,
 	`display_name` text NOT NULL,
 	`created_at` integer NOT NULL,
-	CONSTRAINT "participants_public_key_length" CHECK(length("participants"."public_key") = 44)
+	CONSTRAINT "participants_public_key_base64" CHECK(typeof("participants"."public_key") = 'text' AND length("participants"."public_key") = 44 AND "participants"."public_key" NOT GLOB '*[^A-Za-z0-9+/=]*')
 );
 --> statement-breakpoint
 CREATE TABLE `photos` (
@@ -79,17 +90,17 @@ CREATE INDEX `photos_by_bingo` ON `photos` (`bingo_id`);--> statement-breakpoint
 CREATE TABLE `stamps` (
 	`item_id` text PRIMARY KEY NOT NULL,
 	`card_id` text NOT NULL,
-	`stamped_by` text NOT NULL,
-	`comment` text NOT NULL,
-	`stamped_at` integer NOT NULL,
-	FOREIGN KEY (`stamped_by`) REFERENCES `participants`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`item_id`,`card_id`) REFERENCES `items`(`id`,`card_id`) ON UPDATE no action ON DELETE cascade
+	`note_id` text NOT NULL,
+	FOREIGN KEY (`item_id`,`card_id`) REFERENCES `items`(`id`,`card_id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`note_id`,`card_id`) REFERENCES `notes`(`id`,`card_id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE INDEX `stamps_by_card` ON `stamps` (`card_id`);--> statement-breakpoint
+CREATE INDEX `stamps_by_note` ON `stamps` (`note_id`);--> statement-breakpoint
 CREATE TABLE `used_signatures` (
 	`signature` text PRIMARY KEY NOT NULL,
-	`expires_at` integer NOT NULL
+	`expires_at` integer NOT NULL,
+	CONSTRAINT "used_signatures_expires_at" CHECK(typeof("used_signatures"."expires_at") = 'integer')
 );
 --> statement-breakpoint
 CREATE INDEX `used_signatures_by_expiry` ON `used_signatures` (`expires_at`);

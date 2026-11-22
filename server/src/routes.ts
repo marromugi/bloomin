@@ -58,6 +58,7 @@ const cardParams = z.object({ cardId: CardId.openapi({ param: { name: "cardId", 
 const itemParams = cardParams.extend({ itemId: ItemId.openapi({ param: { name: "itemId", in: "path" } }) });
 const bingoParams = cardParams.extend({ bingoId: BingoId.openapi({ param: { name: "bingoId", in: "path" } }) });
 const photoParams = cardParams.extend({ photoId: PhotoId.openapi({ param: { name: "photoId", in: "path" } }) });
+const newPhotoParams = bingoParams.extend({ photoId: PhotoId.openapi({ param: { name: "photoId", in: "path" } }) });
 
 export const registerParticipant = createRoute({
   operationId: "registerParticipant",
@@ -116,9 +117,15 @@ export const createCard = createRoute({
   method: "post",
   path: "/v1/cards",
   summary: "Create a card",
-  description: "The caller becomes its creator and first member. The server makes the join code.",
+  description:
+    "The caller becomes its creator and first member. The server makes the join code. Sending the same `id` again returns the card the first request made.",
   request: { body: body(CreateCardBody) },
-  responses: { 201: json(Card, "Created."), ...common },
+  responses: {
+    201: json(Card, "Created."),
+    200: json(Card, "This caller already created a card with this id; nothing changed."),
+    ...common,
+    409: error("`id_conflict`: the id belongs to a card someone else created."),
+  },
 });
 
 export const getCard = createRoute({
@@ -166,11 +173,12 @@ export const stamp = createRoute({
   path: "/v1/cards/{cardId}/stamps",
   summary: "Stamp the items a one-line note fulfils",
   description:
-    "Items are never stamped by picking them. The server judges from the note which unstamped items it fulfils (none, one or several), stamps each with who sent the note, the note and the time, then records any bingo they completed. An item already stamped keeps its stamp: when two notes fulfil one item, the first one to arrive stamps it.",
+    "Items are never stamped by picking them. The server judges from the note which unstamped items it fulfils (none, one or several), stamps each with who sent the note, the note and the time, then records any bingo they completed. An item already stamped keeps its stamp: when two notes fulfil one item, the first one to arrive stamps it. Sending the same `noteId` again returns the stamps that note made, with no new bingos, without judging it again.",
   request: { params: cardParams, body: body(StampBody) },
   responses: {
     200: json(StampResult, "Judged; `stamps` lists what was stamped."),
     ...writesCard,
+    409: error("`id_conflict`: the noteId was sent before with another card or another comment."),
   },
 });
 
@@ -192,12 +200,12 @@ export const unstampItem = createRoute({
 export const uploadPhoto = createRoute({
   operationId: "uploadPhoto",
   tags: ["photos"],
-  method: "post",
-  path: "/v1/cards/{cardId}/bingos/{bingoId}/photos",
+  method: "put",
+  path: "/v1/cards/{cardId}/bingos/{bingoId}/photos/{photoId}",
   summary: "Add a photo to a bingo",
-  description: `Allowed after the deadline. The body is the image bytes, at most ${PHOTO_MAX_BYTES} bytes; its SHA-256 is part of the signature like any body. Another content type or an empty body gets 400 \`invalid_request\`.`,
+  description: `Allowed after the deadline. The body is the image bytes, at most ${PHOTO_MAX_BYTES} bytes; its SHA-256 is part of the signature like any body. Another content type or an empty body gets 400 \`invalid_request\`. The app makes \`photoId\`; sending the same one again returns the photo the first request stored.`,
   request: {
-    params: bingoParams,
+    params: newPhotoParams,
     query: PhotoUploadQuery,
     body: {
       required: true,
@@ -209,8 +217,10 @@ export const uploadPhoto = createRoute({
   },
   responses: {
     201: json(Photo, "Stored."),
+    200: json(Photo, "This caller already stored a photo with this id for this bingo; nothing changed."),
     ...onCard,
     404: error("`not_found`: the card or the bingo does not exist, or the caller is not a member of the card."),
+    409: error("`id_conflict`: the photoId belongs to another photo."),
     413: error("`payload_too_large`: the image is larger than the limit."),
   },
 });

@@ -30,7 +30,7 @@ it("test-vectors/signature.json is what the generator makes (run `pnpm signature
   expect(await makeSignatureVectors()).toStrictEqual(vectors);
 });
 
-const publicKey = await importPublicKey(fromBase64(vectors.publicKeyBase64));
+const publicKey = await importPublicKey(vectors.publicKeyBase64);
 
 describe.each(vectors.cases)("$name", (v) => {
   const parts = partsOf(v);
