@@ -102,6 +102,12 @@ describe("one-line text", () => {
     expect(Comment.safeParse(v).success).toBe(false);
     expect(CardTitle.safeParse(v).success).toBe(false);
   });
+  it.each(["\u200Ba", "a\u200Db", "みどり", "!"])("accepts %j", (v) => {
+    expect(Comment.safeParse(v).success).toBe(true);
+  });
+  it("refuses blanks joined by spaces and format characters", () => {
+    expect(Comment.safeParse("\u200B \u200B").success).toBe(false);
+  });
   it("counts length in code points", () => {
     expect(CardTitle.safeParse("🌅".repeat(40)).success).toBe(true);
     expect(CardTitle.safeParse("🌅".repeat(41)).success).toBe(false);

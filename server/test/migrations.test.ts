@@ -155,3 +155,26 @@ it("deletes a card's items, stamps, bingos and photos with the card", async () =
     .first("n");
   expect(counts).toBe(0);
 });
+
+it.each([
+  ["a card by an unknown participant", "INSERT INTO cards VALUES ('c-ghost', 'g', 4, '2026-12-31', 'UTC', 'GGGGGGGGGG', 'ghost', 0)"],
+  ["a member who is not a participant", "INSERT INTO card_members VALUES ('0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 'ghost', 0)"],
+  ["a note by an unknown participant", "INSERT INTO notes VALUES ('n-ghost', '0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 'ghost', 'x', 0)"],
+  ["a photo by an unknown participant", "INSERT INTO photos VALUES ('p-ghost', '0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 'b1', 'ghost', 0, 0, 'image/jpeg', 'key-ghost')"],
+])("refuses %s", async (_, sql) => {
+  await expect(env.DB.prepare(sql).run()).rejects.toThrow(/FOREIGN KEY/);
+});
+
+it("deletes a card's members and a bingo's items with them", async () => {
+  const gone = "66666666-6666-4666-8666-666666666666";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'g', 4, '2026-12-31', 'UTC', 'HHHHHHHHHH', ?, 0)").bind(gone, participant),
+    env.DB.prepare("INSERT INTO card_members VALUES (?, ?, 0)").bind(gone, participant),
+    env.DB.prepare("INSERT INTO bingos VALUES ('gb1', ?, 0)").bind(gone),
+    env.DB.prepare("INSERT INTO bingo_items VALUES ('gb1', 0, 'x', 't', '🌅')"),
+  ]);
+  await env.DB.prepare("DELETE FROM bingos WHERE id = 'gb1'").run();
+  expect(await env.DB.prepare("SELECT count(*) AS n FROM bingo_items WHERE bingo_id = 'gb1'").first("n")).toBe(0);
+  await env.DB.prepare("DELETE FROM cards WHERE id = ?").bind(gone).run();
+  expect(await env.DB.prepare("SELECT count(*) AS n FROM card_members WHERE card_id = ?").bind(gone).first("n")).toBe(0);
+});
