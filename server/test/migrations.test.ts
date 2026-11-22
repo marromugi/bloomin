@@ -28,6 +28,7 @@ it("creates every table", async () => {
     "participants",
     "photos",
     "stamps",
+    "used_signatures",
   ]);
 });
 
@@ -37,6 +38,12 @@ it("keeps the first stamp on an item and refuses the second", async () => {
   await expect(stamp.bind(item, card, participant, "second", 2).run()).rejects.toThrow(/UNIQUE constraint failed/);
   const kept = await env.DB.prepare("SELECT comment FROM stamps WHERE item_id = ?").bind(item).first<{ comment: string }>();
   expect(kept?.comment).toBe("first");
+});
+
+it("accepts a signature once", async () => {
+  const use = env.DB.prepare("INSERT INTO used_signatures VALUES ('sig', 0)");
+  await use.run();
+  await expect(use.run()).rejects.toThrow(/UNIQUE constraint failed/);
 });
 
 it("refuses a size outside 3 to 5", async () => {

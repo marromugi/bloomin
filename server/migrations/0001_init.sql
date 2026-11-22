@@ -78,3 +78,10 @@ CREATE TABLE photos (
   FOREIGN KEY (bingo_id, card_id) REFERENCES bingos (id, card_id) ON DELETE CASCADE
 );
 CREATE INDEX photos_by_bingo ON photos (bingo_id);
+
+-- Signatures of accepted requests other than GET, kept until the timestamp leaves the clock window, so each is accepted once.
+CREATE TABLE used_signatures (
+  signature TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX used_signatures_by_expiry ON used_signatures (expires_at);

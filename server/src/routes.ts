@@ -38,7 +38,7 @@ function body<T extends z.ZodType>(schema: T) {
 const common = {
   400: error("`invalid_request`: the body, path or query does not match the schema."),
   401: error(
-    "`unauthorized`: a signature header is missing, the participant is unknown, the timestamp is more than 300 seconds from the server's clock, or the signature does not verify.",
+    "`unauthorized`: a signature header is missing, the participant is unknown, the timestamp is more than 300 seconds from the server's clock, the signature does not verify, or a request other than GET reuses a signature already accepted.",
   ),
 };
 
@@ -73,7 +73,7 @@ export const registerParticipant = createRoute({
     200: json(Participant, "Already registered with the same key."),
     ...common,
     401: error(
-      "`unauthorized`: a signature header is missing, the participant id header differs from the body `id`, the timestamp is more than 300 seconds from the server's clock, or the signature does not verify with the key in the body.",
+      "`unauthorized`: a signature header is missing, the participant id header differs from the body `id`, the timestamp is more than 300 seconds from the server's clock, the signature does not verify with the key in the body, or the signature was already accepted.",
     ),
     409: error("`participant_conflict`: the id is registered with a different key."),
   },
@@ -164,15 +164,13 @@ export const stamp = createRoute({
   tags: ["stamps"],
   method: "post",
   path: "/v1/cards/{cardId}/stamps",
-  summary: "Stamp the item a one-line note fulfils",
+  summary: "Stamp the items a one-line note fulfils",
   description:
-    "Items are never stamped by picking them. The server judges from the note which unstamped item it fulfils, stamps it with who sent the note, the note and the time, then records any bingo it completed. When two stamps arrive for one item, the first one to arrive wins.",
+    "Items are never stamped by picking them. The server judges from the note which unstamped items it fulfils (none, one or several), stamps each with who sent the note, the note and the time, then records any bingo they completed. An item already stamped keeps its stamp: when two notes fulfil one item, the first one to arrive stamps it.",
   request: { params: cardParams, body: body(StampBody) },
   responses: {
-    201: json(StampResult, "Stamped."),
+    200: json(StampResult, "Judged; `stamps` lists what was stamped."),
     ...writesCard,
-    409: error("`already_stamped`: the item the note fulfils was stamped by a request that arrived first."),
-    422: error("`no_match`: the note fulfils no unstamped item."),
   },
 });
 

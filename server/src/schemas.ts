@@ -15,7 +15,7 @@ const IANA_NAME = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const UTC_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
 const SINGLE_LINE = /^[^\r\n\u2028\u2029]*$/;
-const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
+const EMOJI = /\p{Extended_Pictographic}|^\p{Regional_Indicator}{2}$|^[0-9#*]\uFE0F?\u20E3$/u;
 
 /** The regex keeps out UTC offsets, which Intl accepts as time zones. */
 function isIanaTimeZone(name: string): boolean {
@@ -260,8 +260,6 @@ export const ErrorCode = z
     "unauthorized",
     "not_found",
     "card_expired",
-    "already_stamped",
-    "no_match",
     "participant_conflict",
     "payload_too_large",
     "not_implemented",
@@ -352,8 +350,10 @@ export const StampBody = z.object({ comment: Comment }).openapi("StampBody");
 
 export const StampResult = z
   .object({
-    stamp: Stamp,
-    newBingos: z.array(Bingo).openapi({ description: "Bingos this stamp completed." }),
+    stamps: z.array(Stamp).openapi({
+      description: "The stamps this note made: none when it fulfils no unstamped item, several when it fulfils several.",
+    }),
+    newBingos: z.array(Bingo).openapi({ description: "Bingos these stamps completed." }),
   })
   .openapi("StampResult");
 

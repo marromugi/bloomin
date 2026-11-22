@@ -88,10 +88,10 @@ describe("Deadline", () => {
 });
 
 describe("Emoji", () => {
-  it.each(["🌅", "👨‍👩‍👧‍👦", "🇯🇵", "1️⃣", "👍🏽", "❤️"])("accepts %s", (v) => {
+  it.each(["🌅", "👨‍👩‍👧‍👦", "🇯🇵", "1️⃣", "#\u20E3", "👍🏽", "❤️", "🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}"])("accepts %s", (v) => {
     expect(Emoji.safeParse(v).success).toBe(true);
   });
-  it.each(["", " ", "a", "abc", "🌅🌅", "🌅 ", "1"])("refuses %j", (v) => {
+  it.each(["", " ", "a", "abc", "🌅🌅", "🌅 ", "1", "a\u20E3", "\u{1F1EF}", "◯"])("refuses %j", (v) => {
     expect(Emoji.safeParse(v).success).toBe(false);
   });
 });
