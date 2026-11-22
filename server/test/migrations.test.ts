@@ -1,6 +1,6 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { beforeAll, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const participant = "3f2a1c9e-8b7d-4e6f-9a0b-1c2d3e4f5a6b";
 const card = "0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817";
@@ -67,4 +67,39 @@ it("refuses a stamp or a photo whose card differs from its item's or bingo's car
   await expect(
     env.DB.prepare("INSERT INTO photos VALUES ('p1', ?, 'b1', ?, 0, 0, 'image/jpeg', 'k1')").bind(other, participant).run(),
   ).rejects.toThrow(/FOREIGN KEY constraint failed/);
+});
+
+describe("constraints", () => {
+  const other = "33333333-3333-4333-8333-333333333333";
+
+  beforeAll(async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO cards VALUES (?, 'c', 4, '2026-12-31', 'UTC', 'DDDDDDDDDD', ?, 0)").bind(other, participant),
+      env.DB.prepare("INSERT INTO card_members VALUES (?, ?, 0)").bind(other, participant),
+      env.DB.prepare("INSERT INTO items VALUES ('ci1', ?, 1, 't', '🌅')").bind(other),
+      env.DB.prepare("INSERT INTO bingos VALUES ('cb1', ?, 0)").bind(other),
+      env.DB.prepare("INSERT INTO bingo_items VALUES ('cb1', 0, 'ci1', 't', '🌅')"),
+      env.DB.prepare("INSERT INTO photos VALUES ('cp1', ?, 'cb1', ?, 0, 0, 'image/jpeg', 'key-1')").bind(other, participant),
+    ]);
+  });
+
+  it.each([
+    ["a repeated join code", "INSERT INTO cards VALUES ('c-dup', 'c', 4, '2026-12-31', 'UTC', 'DDDDDDDDDD', ?1, 0)", /UNIQUE/],
+    ["a repeated member", "INSERT INTO card_members VALUES (?2, ?1, 1)", /UNIQUE|PRIMARY KEY/],
+    ["a position past 24", "INSERT INTO items VALUES ('ci-25', ?2, 25, 't', '🌅')", /CHECK/],
+    ["two items on one cell", "INSERT INTO items VALUES ('ci-dup', ?2, 1, 't', '🌅')", /UNIQUE/],
+    ["a repeated bingo item", "INSERT INTO bingo_items VALUES ('cb1', 0, 'x', 't', '🌅')", /UNIQUE|PRIMARY KEY/],
+    ["a PNG photo", "INSERT INTO photos VALUES ('cp-png', ?2, 'cb1', ?1, 0, 0, 'image/png', 'key-2')", /CHECK/],
+    ["a repeated photo object key", "INSERT INTO photos VALUES ('cp-dup', ?2, 'cb1', ?1, 0, 0, 'image/jpeg', 'key-1')", /UNIQUE/],
+  ])("refuses %s", async (_, sql, error) => {
+    const statement = env.DB.prepare(sql);
+    const bound = sql.includes("?2") ? statement.bind(participant, other) : sql.includes("?1") ? statement.bind(participant) : statement;
+    await expect(bound.run()).rejects.toThrow(error);
+  });
+
+  it("deletes a stamp with its item", async () => {
+    await env.DB.prepare("INSERT INTO stamps VALUES ('ci1', ?, ?, 'x', 0)").bind(other, participant).run();
+    await env.DB.prepare("DELETE FROM items WHERE id = 'ci1'").run();
+    expect(await env.DB.prepare("SELECT count(*) AS n FROM stamps WHERE item_id = 'ci1'").first("n")).toBe(0);
+  });
 });

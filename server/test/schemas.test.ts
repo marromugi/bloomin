@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import vectors from "../test-vectors/signature.json";
-import { CardTitle, Comment, Deadline, Emoji, Instant, PublicKey } from "../src/schemas";
+import {
+  CardTitle,
+  Comment,
+  CreateCardBody,
+  Deadline,
+  DisplayName,
+  Emoji,
+  Instant,
+  PublicKey,
+  ResizeCardBody,
+  UpdateItemBody,
+} from "../src/schemas";
 
 function base64OfHex(hex: string): string {
   return btoa(String.fromCharCode(...(hex.match(/../g) ?? []).map((b) => parseInt(b, 16))));
@@ -93,5 +104,61 @@ describe("one-line text", () => {
   it("counts length in code points", () => {
     expect(CardTitle.safeParse("🌅".repeat(40)).success).toBe(true);
     expect(CardTitle.safeParse("🌅".repeat(41)).success).toBe(false);
+  });
+});
+
+describe("trimmed text", () => {
+  it.each(["", "   ", "\t"])("refuses blank %j", (v) => {
+    expect(DisplayName.safeParse(v).success).toBe(false);
+    expect(Comment.safeParse(v).success).toBe(false);
+  });
+});
+
+const item = (n: number) => ({ title: `t${n}`, emoji: "🌅" });
+const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+describe("CreateCardBody", () => {
+  const card = (size: number, positions: number[]) => ({
+    title: "card",
+    size,
+    deadline: { date: "2026-12-31", timeZone: "Asia/Tokyo" },
+    items: positions.map((position) => ({ position, ...item(position) })),
+  });
+  it("refuses a position past the last cell when the count is right", () => {
+    expect(CreateCardBody.safeParse(card(3, [0, 1, 2, 3, 5, 6, 7, 9])).success).toBe(false);
+  });
+});
+
+describe("ResizeCardBody", () => {
+  const resize = (size: number, count: number, ids: number[] = []) => ({
+    size,
+    items: Array.from({ length: count }, (_, i) => ({ ...item(i), ...(ids[i] === undefined ? {} : { id: id(ids[i]) }) })),
+  });
+  it.each([
+    [3, 8],
+    [4, 16],
+    [5, 24],
+  ])("accepts size %i with %i items", (size, count) => {
+    expect(ResizeCardBody.safeParse(resize(size, count, [1, 2])).success).toBe(true);
+  });
+  it.each([
+    [3, 9],
+    [3, 7],
+    [4, 15],
+    [5, 25],
+  ])("refuses size %i with %i items", (size, count) => {
+    expect(ResizeCardBody.safeParse(resize(size, count)).success).toBe(false);
+  });
+  it("refuses a repeated item id", () => {
+    expect(ResizeCardBody.safeParse(resize(3, 8, [1, 1])).success).toBe(false);
+  });
+});
+
+describe("UpdateItemBody", () => {
+  it.each([[{ title: "t" }], [{ emoji: "🌅" }], [{ title: "t", emoji: "🌅" }]])("accepts %j", (body) => {
+    expect(UpdateItemBody.safeParse(body).success).toBe(true);
+  });
+  it("refuses an empty change", () => {
+    expect(UpdateItemBody.safeParse({}).success).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import vectors from "../test-vectors/signature.json";
+import { makeSignatureVectors } from "../scripts/signature-vectors";
 import { bodySha256Hex, canonicalString, importPublicKey, verifySignature, type SignedParts } from "../src/signature";
 
 function fromBase64(value: string): Uint8Array<ArrayBuffer> {
@@ -24,6 +25,10 @@ function replaceAt(value: string, index: number): string {
   const swapped = c === "A" ? "B" : c === "a" ? "b" : c === "0" ? "1" : c === "/" ? "_" : "A";
   return value.slice(0, index) + swapped + value.slice(index + 1);
 }
+
+it("test-vectors/signature.json is what the generator makes (run `pnpm signature-vectors` to update it)", async () => {
+  expect(await makeSignatureVectors()).toStrictEqual(vectors);
+});
 
 const publicKey = await importPublicKey(fromBase64(vectors.publicKeyBase64));
 
@@ -98,6 +103,15 @@ describe("clock window", () => {
 
   it.each([-300, 300])("accepts a timestamp %i seconds from the server clock", async (offset) => {
     expect(await verifySignature(parts, v.signature, publicKey, at(v.timestamp, offset))).toEqual({ ok: true });
+  });
+
+  it("compares whole seconds, rounding the server clock down", async () => {
+    const ts = Number(v.timestamp);
+    expect(await verifySignature(parts, v.signature, publicKey, new Date((ts + 300) * 1000 + 999))).toEqual({ ok: true });
+    expect(await verifySignature(parts, v.signature, publicKey, new Date((ts - 300) * 1000 - 1))).toEqual({
+      ok: false,
+      reason: "timestamp_out_of_range",
+    });
   });
 
   it.each([-301, 301, 86_400])("refuses a timestamp %i seconds from the server clock", async (offset) => {
