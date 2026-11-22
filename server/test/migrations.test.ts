@@ -1,5 +1,6 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+import vectors from "../test-vectors/signature.json";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const participant = "3f2a1c9e-8b7d-4e6f-9a0b-1c2d3e4f5a6b";
@@ -9,7 +10,7 @@ const item = "8e7d6c5b-4a39-4281-b0f1-e2d3c4b5a697";
 beforeAll(async () => {
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO participants VALUES (?, ?, 'みどり', 0)").bind(participant, new Uint8Array(32)),
+    env.DB.prepare("INSERT INTO participants VALUES (?, ?, 'みどり', 0)").bind(participant, vectors.publicKeyBase64),
     env.DB.prepare("INSERT INTO cards VALUES (?, 'card', 3, '2026-12-31', 'Asia/Tokyo', '7K3M9QX2HD', ?, 0)").bind(card, participant),
     env.DB.prepare("INSERT INTO items VALUES (?, ?, 0, 'item', '🌅')").bind(item, card),
   ]);

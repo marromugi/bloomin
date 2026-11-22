@@ -29,3 +29,5 @@ jobs:
       - run: pnpm test
       - name: openapi.json is what the routes generate
         run: pnpm openapi && git diff --exit-code -- openapi.json
+      - name: migrations are what the Drizzle schema generates
+        run: pnpm db:generate && test -z "$(git status --porcelain -- migrations)"
