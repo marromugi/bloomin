@@ -27,9 +27,9 @@ export async function makeSignatureVectors() {
     },
     {
       name: "path with query",
-      method: "POST",
+      method: "PUT",
       pathAndQuery:
-        "/v1/cards/0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817/bingos/8e7d6c5b-4a39-4281-b0f1-e2d3c4b5a697/photos?takenAt=2026-11-22T09:30:00.000Z",
+        "/v1/cards/0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817/bingos/8e7d6c5b-4a39-4281-b0f1-e2d3c4b5a697/photos/5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d?takenAt=2026-11-22T09:30:00.000Z",
       timestamp: "1795000300",
       body: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...encoder.encode(" not really a jpeg")]),
     },

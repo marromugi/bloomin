@@ -173,12 +173,12 @@ export const stamp = createRoute({
   path: "/v1/cards/{cardId}/stamps",
   summary: "Stamp the items a one-line note fulfils",
   description:
-    "Items are never stamped by picking them. The server judges from the note which unstamped items it fulfils (none, one or several), stamps each with who sent the note, the note and the time, then records any bingo they completed. An item already stamped keeps its stamp: when two notes fulfil one item, the first one to arrive stamps it. Sending the same `noteId` again returns the stamps that note made, with no new bingos, without judging it again.",
+    "Items are never stamped by picking them. The server judges from the note which unstamped items it fulfils (none, one or several), stamps each with who sent the note, the note and the time, then records any bingo they completed. An item already stamped keeps its stamp: when two notes fulfil one item, the first one to arrive stamps it. The same sender sending the same `noteId` again returns the stamps that note made, with no new bingos, without judging it again.",
   request: { params: cardParams, body: body(StampBody) },
   responses: {
     200: json(StampResult, "Judged; `stamps` lists what was stamped."),
     ...writesCard,
-    409: error("`id_conflict`: the noteId was sent before with another card or another comment."),
+    409: error("`id_conflict`: the noteId was sent before by someone else, or with another card or another comment."),
   },
 });
 
