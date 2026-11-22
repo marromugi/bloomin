@@ -15,7 +15,8 @@ const IANA_NAME = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const UTC_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
 const FORBIDDEN_IN_TEXT = /[\p{Cc}\p{Co}\p{Cn}\u2028\u2029\u202A-\u202E\u2066-\u2069\u{E0000}-\u{E007F}]/u;
-const BLANK_LOOKING = /[\u115F\u1160\u3164\uFFA0\u2800]/gu;
+const BLANK_LOOKING = /[\u115F\u1160\u3164\uFFA0\u2800\uFFFC\u{1D159}]/gu;
+const TAG_FLAG = /\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F}/gu;
 const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
 const EMOJI = /\p{Extended_Pictographic}|^\p{Regional_Indicator}{2}$|^[0-9#*]\uFE0F?\u20E3$/u;
 
@@ -69,7 +70,7 @@ function line(max: number) {
     .trim()
     .min(1)
     .max(max)
-    .refine((v) => !FORBIDDEN_IN_TEXT.test(v), "must be one line without control, private-use, unassigned, direction or tag characters")
+    .refine((v) => !FORBIDDEN_IN_TEXT.test(v.replace(TAG_FLAG, "")), "must be one line without control, private-use, unassigned, direction or tag characters")
     .refine((v) => VISIBLE.test(v.replace(BLANK_LOOKING, "")), "must contain a visible character")
     .refine((v) => v.isWellFormed(), "must be well-formed Unicode");
 }

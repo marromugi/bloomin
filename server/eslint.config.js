@@ -7,6 +7,7 @@ export default tseslint.config(
     languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
     rules: {
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
+      "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true }],
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "as", objectLiteralTypeAssertions: "never" }],
       "@typescript-eslint/switch-exhaustiveness-check": ["error", { considerDefaultExhaustiveForUnions: false, requireDefaultForNonUnion: true }],
     },
