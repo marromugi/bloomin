@@ -32,6 +32,10 @@ it("test-vectors/signature.json is what the generator makes (run `pnpm signature
 
 const publicKey = await importPublicKey(vectors.publicKeyBase64);
 
+it.each(["", "not a key", `${vectors.publicKeyBase64.slice(0, -2)}h=`])("refuses to import the stored key %j", async (stored) => {
+  await expect(importPublicKey(stored)).rejects.toThrow(/not canonical base64/);
+});
+
 describe.each(vectors.cases)("$name", (v) => {
   const parts = partsOf(v);
   const now = at(v.timestamp);

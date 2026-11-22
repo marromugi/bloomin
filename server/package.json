@@ -10,7 +10,8 @@
     "test": "vitest run",
     "signature-vectors": "tsx scripts/write-signature-vectors.ts",
     "db:generate": "drizzle-kit generate --name init",
-    "db:check": "drizzle-kit generate --name init && tsx scripts/check-migrations.ts"
+    "db:check": "drizzle-kit generate --name init && tsx scripts/check-migrations.ts",
+    "test:scripts": "tsx --test scripts/*.test.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "1.6.3",

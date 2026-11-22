@@ -1,5 +1,6 @@
 // Fails when applying the committed migrations gives a different database from the one the Drizzle schema generates from scratch:
 // different tables, columns, indexes, foreign keys, CHECK constraints, rows, or user_version.
+// Usage: tsx scripts/check-migrations.ts [migrations directory, default ./migrations]
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url).href);
+const committedDir = process.argv[2] ?? join(root, "migrations");
 
 interface Built {
   tables: Record<string, unknown>;
@@ -75,7 +77,7 @@ try {
     cwd: root,
     stdio: "ignore",
   });
-  const committed = JSON.stringify(build(join(root, "migrations")), null, 2);
+  const committed = JSON.stringify(build(committedDir), null, 2);
   const generated = JSON.stringify(build(fresh), null, 2);
   if (committed !== generated) {
     console.error("The committed migrations build a different database from src/db/schema.ts.");

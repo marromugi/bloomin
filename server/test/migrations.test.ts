@@ -59,6 +59,8 @@ it("refuses a stamp whose note is on another card", async () => {
 it.each([
   ["a public key with characters outside base64", "INSERT INTO participants VALUES ('p-bad', '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', 'x', 0)"],
   ["an expiry that is not an integer", "INSERT INTO used_signatures VALUES ('sig-text', 'soon')"],
+  ["a public key stored as bytes", "INSERT INTO participants VALUES ('p-blob', CAST('A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=' AS BLOB), 'x', 0)"],
+  ["a public key with base64url characters", "INSERT INTO participants VALUES ('p-url', 'A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=', 'x', 0)"],
 ])("refuses %s", async (_, sql) => {
   await expect(env.DB.prepare(sql).run()).rejects.toThrow(/CHECK constraint failed/);
 });
@@ -177,4 +179,19 @@ it("deletes a card's members and a bingo's items with them", async () => {
   expect(await env.DB.prepare("SELECT count(*) AS n FROM bingo_items WHERE bingo_id = 'gb1'").first("n")).toBe(0);
   await env.DB.prepare("DELETE FROM cards WHERE id = ?").bind(gone).run();
   expect(await env.DB.prepare("SELECT count(*) AS n FROM card_members WHERE card_id = ?").bind(gone).first("n")).toBe(0);
+});
+
+it("keeps note ids unique and deletes a note's stamps with it", async () => {
+  await expect(
+    env.DB.prepare("INSERT INTO notes VALUES ('n1', ?, ?, 'again', 9)").bind(card, participant).run(),
+  ).rejects.toThrow(/UNIQUE|PRIMARY KEY/);
+  const fresh = "77777777-7777-4777-8777-777777777777";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'n', 4, '2026-12-31', 'UTC', 'JJJJJJJJJJ', ?, 0)").bind(fresh, participant),
+    env.DB.prepare("INSERT INTO items VALUES ('ni1', ?, 0, 't', '🌅')").bind(fresh),
+    env.DB.prepare("INSERT INTO notes VALUES ('nn1', ?, ?, 'x', 0)").bind(fresh, participant),
+    env.DB.prepare("INSERT INTO stamps VALUES ('ni1', ?, 'nn1')").bind(fresh),
+  ]);
+  await env.DB.prepare("DELETE FROM notes WHERE id = 'nn1'").run();
+  expect(await env.DB.prepare("SELECT count(*) AS n FROM stamps WHERE note_id = 'nn1'").first("n")).toBe(0);
 });

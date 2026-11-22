@@ -98,11 +98,11 @@ describe("Emoji", () => {
 });
 
 describe("one-line text", () => {
-  it.each(["a\nb", "a\rb", "a\u2028b", "a\u2029b", "a\u0085b", "a\u000Bb", "a\u000Cb", "a\u0000b", "\ud800", "\u200B", "\u200B\u200D", "\u3164", "\uFFA0", "\u2800", "\uFE0F", "\u0301", "\uE000", "\u0378", "a\u202Eb", "\u{E0020}a", "\uFFFC", "\u{1D159}"])("refuses %j", (v) => {
+  it.each(["a\nb", "a\rb", "a\u2028b", "a\u2029b", "a\u0085b", "a\u000Bb", "a\u000Cb", "a\u0000b", "\ud800", "\u200B", "\u200B\u200D", "\u3164", "\uFFA0", "\u2800", "\uFE0F", "\u0301", "\uE000", "\u0378", "a\u202Eb", "\u{E0020}a", "\uFFFC", "\u{1D159}", "a\uE000", "a\u0378", "a\u2066b", "a\u2069b", "a\u{E0000}", "a\u{E007F}", "\u115F", "\u1160", "\u3164\u3164"])("refuses %j", (v) => {
     expect(Comment.safeParse(v).success).toBe(false);
     expect(CardTitle.safeParse(v).success).toBe(false);
   });
-  it.each(["\u200Ba", "a\u200Db", "みどり", "!", "🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F} flag"])("accepts %j", (v) => {
+  it.each(["\u200Ba", "a\u200Db", "みどり", "!", "🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F} flag", "123"])("accepts %j", (v) => {
     expect(Comment.safeParse(v).success).toBe(true);
   });
   it("refuses blanks joined by spaces and format characters", () => {
