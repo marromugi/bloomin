@@ -1,0 +1,34 @@
+name: server
+
+on:
+  pull_request:
+    paths: ["server/**", ".github/workflows/server.yml"]
+  push:
+    branches: [main]
+    paths: ["server/**", ".github/workflows/server.yml"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:scripts
+      - name: openapi.json is what the routes generate
+        run: pnpm openapi && git diff --exit-code -- openapi.json
+      - name: migrations are what the Drizzle schema generates
+        run: pnpm db:check && test -z "$(git status --porcelain -- migrations)"

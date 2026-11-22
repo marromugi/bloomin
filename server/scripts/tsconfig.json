@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node", "@cloudflare/workers-types"
+    ],
+    "lib": [
+      "ES2024"
+    ]
+  },
+  "include": [
+    "."
+  ]
+}

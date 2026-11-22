@@ -1,0 +1,197 @@
+import { applyD1Migrations } from "cloudflare:test";
+import { env } from "cloudflare:workers";
+import vectors from "../test-vectors/signature.json";
+import { beforeAll, describe, expect, it } from "vitest";
+
+const participant = "3f2a1c9e-8b7d-4e6f-9a0b-1c2d3e4f5a6b";
+const card = "0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817";
+const item = "8e7d6c5b-4a39-4281-b0f1-e2d3c4b5a697";
+
+beforeAll(async () => {
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO participants VALUES (?, ?, 'みどり', 0)").bind(participant, vectors.publicKeyBase64),
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'card', 3, '2026-12-31', 'Asia/Tokyo', '7K3M9QX2HD', ?, 0)").bind(card, participant),
+    env.DB.prepare("INSERT INTO items VALUES (?, ?, 0, 'item', '🌅')").bind(item, card),
+  ]);
+});
+
+it("creates every table", async () => {
+  const { results } = await env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name",
+  ).all<{ name: string }>();
+  expect(results.map((r) => r.name)).toEqual([
+    "bingo_items",
+    "bingos",
+    "card_members",
+    "cards",
+    "items",
+    "notes",
+    "participants",
+    "photos",
+    "stamps",
+    "used_signatures",
+  ]);
+});
+
+it("keeps the first stamp on an item and refuses the second", async () => {
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO notes VALUES ('n1', ?, ?, 'first', 1)").bind(card, participant),
+    env.DB.prepare("INSERT INTO notes VALUES ('n2', ?, ?, 'second', 2)").bind(card, participant),
+  ]);
+  const stamp = env.DB.prepare("INSERT INTO stamps VALUES (?, ?, ?)");
+  await stamp.bind(item, card, "n1").run();
+  await expect(stamp.bind(item, card, "n2").run()).rejects.toThrow(/UNIQUE constraint failed/);
+  const kept = await env.DB.prepare("SELECT note_id FROM stamps WHERE item_id = ?").bind(item).first<{ note_id: string }>();
+  expect(kept?.note_id).toBe("n1");
+});
+
+it("refuses a stamp whose note is on another card", async () => {
+  const elsewhere = "55555555-5555-4555-8555-555555555555";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'e', 4, '2026-12-31', 'UTC', 'FFFFFFFFFF', ?, 0)").bind(elsewhere, participant),
+    env.DB.prepare("INSERT INTO notes VALUES ('en1', ?, ?, 'x', 0)").bind(elsewhere, participant),
+    env.DB.prepare("INSERT INTO items VALUES ('ei1', ?, 2, 't', '🌅')").bind(card),
+  ]);
+  await expect(env.DB.prepare("INSERT INTO stamps VALUES ('ei1', ?, 'en1')").bind(card).run()).rejects.toThrow(/FOREIGN KEY/);
+});
+
+it.each([
+  ["a public key with characters outside base64", "INSERT INTO participants VALUES ('p-bad', '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', 'x', 0)"],
+  ["an expiry that is not an integer", "INSERT INTO used_signatures VALUES ('sig-text', 'soon')"],
+  ["a public key stored as bytes", "INSERT INTO participants VALUES ('p-blob', CAST('A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=' AS BLOB), 'x', 0)"],
+  ["a public key with base64url characters", "INSERT INTO participants VALUES ('p-url', 'A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=', 'x', 0)"],
+])("refuses %s", async (_, sql) => {
+  await expect(env.DB.prepare(sql).run()).rejects.toThrow(/CHECK constraint failed/);
+});
+
+it("accepts a signature once", async () => {
+  const use = env.DB.prepare("INSERT INTO used_signatures VALUES ('sig', 0)");
+  await use.run();
+  await expect(use.run()).rejects.toThrow(/UNIQUE constraint failed/);
+});
+
+it("refuses a size outside 3 to 5", async () => {
+  await expect(
+    env.DB.prepare("INSERT INTO cards VALUES ('c6', 'x', 6, '2026-12-31', 'UTC', 'AAAAAAAAAA', ?, 0)").bind(participant).run(),
+  ).rejects.toThrow(/CHECK constraint failed/);
+});
+
+it.each([
+  ["a fractional size", "INSERT INTO cards VALUES ('c35', 'x', 3.5, '2026-12-31', 'UTC', 'BBBBBBBBBB', ?, 0)"],
+  ["a fractional position", "INSERT INTO items VALUES ('i15', '0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 1.5, 't', '🌅')"],
+])("refuses %s", async (_, sql) => {
+  const statement = env.DB.prepare(sql);
+  await expect((sql.includes("?") ? statement.bind(participant) : statement).run()).rejects.toThrow(/CHECK constraint failed/);
+});
+
+it("refuses a stamp or a photo whose card differs from its item's or bingo's card", async () => {
+  const other = "11111111-1111-4111-8111-111111111111";
+  const otherItem = "22222222-2222-4222-8222-222222222222";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'other', 4, '2026-12-31', 'UTC', 'CCCCCCCCCC', ?, 0)").bind(other, participant),
+    env.DB.prepare("INSERT INTO items VALUES (?, ?, 0, 'item', '🌅')").bind(otherItem, other),
+    env.DB.prepare("INSERT INTO bingos VALUES ('b1', ?, 0)").bind(card),
+  ]);
+  await expect(
+    env.DB.prepare("INSERT INTO stamps VALUES (?, ?, 'n1')").bind(otherItem, card).run(),
+  ).rejects.toThrow(/FOREIGN KEY constraint failed/);
+  await expect(
+    env.DB.prepare("INSERT INTO photos VALUES ('p1', ?, 'b1', ?, 0, 0, 'image/jpeg', 'k1')").bind(other, participant).run(),
+  ).rejects.toThrow(/FOREIGN KEY constraint failed/);
+});
+
+describe("constraints", () => {
+  const other = "33333333-3333-4333-8333-333333333333";
+
+  beforeAll(async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO cards VALUES (?, 'c', 4, '2026-12-31', 'UTC', 'DDDDDDDDDD', ?, 0)").bind(other, participant),
+      env.DB.prepare("INSERT INTO card_members VALUES (?, ?, 0)").bind(other, participant),
+      env.DB.prepare("INSERT INTO items VALUES ('ci1', ?, 1, 't', '🌅')").bind(other),
+      env.DB.prepare("INSERT INTO bingos VALUES ('cb1', ?, 0)").bind(other),
+      env.DB.prepare("INSERT INTO bingo_items VALUES ('cb1', 0, 'ci1', 't', '🌅')"),
+      env.DB.prepare("INSERT INTO photos VALUES ('cp1', ?, 'cb1', ?, 0, 0, 'image/jpeg', 'key-1')").bind(other, participant),
+    ]);
+  });
+
+  it.each([
+    ["a repeated join code", "INSERT INTO cards VALUES ('c-dup', 'c', 4, '2026-12-31', 'UTC', 'DDDDDDDDDD', ?1, 0)", /UNIQUE/],
+    ["a repeated member", "INSERT INTO card_members VALUES (?2, ?1, 1)", /UNIQUE|PRIMARY KEY/],
+    ["a position past 24", "INSERT INTO items VALUES ('ci-25', ?2, 25, 't', '🌅')", /CHECK/],
+    ["two items on one cell", "INSERT INTO items VALUES ('ci-dup', ?2, 1, 't', '🌅')", /UNIQUE/],
+    ["a repeated bingo item", "INSERT INTO bingo_items VALUES ('cb1', 0, 'x', 't', '🌅')", /UNIQUE|PRIMARY KEY/],
+    ["a PNG photo", "INSERT INTO photos VALUES ('cp-png', ?2, 'cb1', ?1, 0, 0, 'image/png', 'key-2')", /CHECK/],
+    ["a repeated photo object key", "INSERT INTO photos VALUES ('cp-dup', ?2, 'cb1', ?1, 0, 0, 'image/jpeg', 'key-1')", /UNIQUE/],
+  ])("refuses %s", async (_, sql, error) => {
+    const statement = env.DB.prepare(sql);
+    const bound = sql.includes("?2") ? statement.bind(participant, other) : sql.includes("?1") ? statement.bind(participant) : statement;
+    await expect(bound.run()).rejects.toThrow(error);
+  });
+
+  it("deletes a stamp with its item", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO notes VALUES ('cn1', ?, ?, 'x', 0)").bind(other, participant),
+      env.DB.prepare("INSERT INTO stamps VALUES ('ci1', ?, 'cn1')").bind(other),
+    ]);
+    await env.DB.prepare("DELETE FROM items WHERE id = 'ci1'").run();
+    expect(await env.DB.prepare("SELECT count(*) AS n FROM stamps WHERE item_id = 'ci1'").first("n")).toBe(0);
+  });
+});
+
+it("deletes a card's items, stamps, bingos and photos with the card", async () => {
+  const doomed = "44444444-4444-4444-8444-444444444444";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'd', 4, '2026-12-31', 'UTC', 'EEEEEEEEEE', ?, 0)").bind(doomed, participant),
+    env.DB.prepare("INSERT INTO items VALUES ('di1', ?, 0, 't', '🌅')").bind(doomed),
+    env.DB.prepare("INSERT INTO notes VALUES ('dn1', ?, ?, 'x', 0)").bind(doomed, participant),
+    env.DB.prepare("INSERT INTO stamps VALUES ('di1', ?, 'dn1')").bind(doomed),
+    env.DB.prepare("INSERT INTO bingos VALUES ('db1', ?, 0)").bind(doomed),
+    env.DB.prepare("INSERT INTO photos VALUES ('dp1', ?, 'db1', ?, 0, 0, 'image/jpeg', 'key-d')").bind(doomed, participant),
+  ]);
+  await env.DB.prepare("DELETE FROM cards WHERE id = ?").bind(doomed).run();
+  const counts = await env.DB.prepare(
+    "SELECT (SELECT count(*) FROM items WHERE card_id = ?1) + (SELECT count(*) FROM stamps WHERE card_id = ?1) + (SELECT count(*) FROM bingos WHERE card_id = ?1) + (SELECT count(*) FROM photos WHERE card_id = ?1) AS n",
+  )
+    .bind(doomed)
+    .first("n");
+  expect(counts).toBe(0);
+});
+
+it.each([
+  ["a card by an unknown participant", "INSERT INTO cards VALUES ('c-ghost', 'g', 4, '2026-12-31', 'UTC', 'GGGGGGGGGG', 'ghost', 0)"],
+  ["a member who is not a participant", "INSERT INTO card_members VALUES ('0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 'ghost', 0)"],
+  ["a note by an unknown participant", "INSERT INTO notes VALUES ('n-ghost', '0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 'ghost', 'x', 0)"],
+  ["a photo by an unknown participant", "INSERT INTO photos VALUES ('p-ghost', '0b6d5e2a-1f3c-4a8b-9d7e-6c5b4a392817', 'b1', 'ghost', 0, 0, 'image/jpeg', 'key-ghost')"],
+])("refuses %s", async (_, sql) => {
+  await expect(env.DB.prepare(sql).run()).rejects.toThrow(/FOREIGN KEY/);
+});
+
+it("deletes a card's members and a bingo's items with them", async () => {
+  const gone = "66666666-6666-4666-8666-666666666666";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'g', 4, '2026-12-31', 'UTC', 'HHHHHHHHHH', ?, 0)").bind(gone, participant),
+    env.DB.prepare("INSERT INTO card_members VALUES (?, ?, 0)").bind(gone, participant),
+    env.DB.prepare("INSERT INTO bingos VALUES ('gb1', ?, 0)").bind(gone),
+    env.DB.prepare("INSERT INTO bingo_items VALUES ('gb1', 0, 'x', 't', '🌅')"),
+  ]);
+  await env.DB.prepare("DELETE FROM bingos WHERE id = 'gb1'").run();
+  expect(await env.DB.prepare("SELECT count(*) AS n FROM bingo_items WHERE bingo_id = 'gb1'").first("n")).toBe(0);
+  await env.DB.prepare("DELETE FROM cards WHERE id = ?").bind(gone).run();
+  expect(await env.DB.prepare("SELECT count(*) AS n FROM card_members WHERE card_id = ?").bind(gone).first("n")).toBe(0);
+});
+
+it("keeps note ids unique and deletes a note's stamps with it", async () => {
+  await expect(
+    env.DB.prepare("INSERT INTO notes VALUES ('n1', ?, ?, 'again', 9)").bind(card, participant).run(),
+  ).rejects.toThrow(/UNIQUE|PRIMARY KEY/);
+  const fresh = "77777777-7777-4777-8777-777777777777";
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO cards VALUES (?, 'n', 4, '2026-12-31', 'UTC', 'JJJJJJJJJJ', ?, 0)").bind(fresh, participant),
+    env.DB.prepare("INSERT INTO items VALUES ('ni1', ?, 0, 't', '🌅')").bind(fresh),
+    env.DB.prepare("INSERT INTO notes VALUES ('nn1', ?, ?, 'x', 0)").bind(fresh, participant),
+    env.DB.prepare("INSERT INTO stamps VALUES ('ni1', ?, 'nn1')").bind(fresh),
+  ]);
+  await env.DB.prepare("DELETE FROM notes WHERE id = 'nn1'").run();
+  expect(await env.DB.prepare("SELECT count(*) AS n FROM stamps WHERE note_id = 'nn1'").first("n")).toBe(0);
+});
