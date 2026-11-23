@@ -16,5 +16,5 @@ export default tseslint.config(
     files: ["scripts/**/*.ts"],
     languageOptions: { parserOptions: { projectService: false, project: "./scripts/tsconfig.json", tsconfigRootDir: import.meta.dirname } },
   },
-  { files: ["eslint.config.js"], extends: [tseslint.configs.disableTypeChecked] },
+  { files: ["eslint.config.js", "stryker.config.mjs"], extends: [tseslint.configs.disableTypeChecked] },
 );
