@@ -20,3 +20,6 @@ build/
 # Node / Cloudflare
 node_modules/
 .wrangler/
+
+# Stryker
+server/reports/
